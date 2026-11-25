@@ -66,6 +66,11 @@ Against `Gramma_Engine___Technical_Plan.md`:
   PSGlib-format stream for SMS/GG. The SMS/GG backend interprets that stream
   with a tiny in-engine player; `test-kart` ships a generated theme. See
   [`asset-pipeline.md`](asset-pipeline.md#music-tracker-scores).
+- Tiled map import v1 (Phase 3): `[[map]]` converts one orthogonal 8x8 tile
+  layer from CSV/XML/base64 `.tmx` files, with inline or external image
+  tilesets, into the same `gr_tileset`/`gr_map` symbols as PNG backgrounds.
+  `examples/grain-demo` imports its track from Tiled. See
+  [`asset-pipeline.md`](asset-pipeline.md#tiled-maps).
 - Budget linter v0: ROM, VRAM, palette, sprite and nametable checks.
 - `gr` CLI: `new`, `assets`, `grain`/`transpile`, `check`, `build`, `run`,
   `clean`, `targets`, `doctor`, with zero-sudo toolchain bootstrapping.
@@ -103,10 +108,10 @@ Against `Gramma_Engine___Technical_Plan.md`:
   covers MBC bank probes, GB overlays and NES CHR/PRG bank behavior, but is
   skipped for now. Emulator CI remains the verification gate; skipped is not
   recorded as passed.
-- Tiled `.tmx` import, MOD/XM/IT importers (v1 accepts Gramma text scores),
-  compressed PSGlib streams, more per-target extension headers, Docker
-  toolchain images, a full Grain language server (completion, rename,
-  refactoring), performance guides and community beta.
+- MOD/XM/IT importers (v1 accepts Gramma text scores), compressed PSGlib
+  streams, multi-layer Tiled compositing and tile animations, more per-target
+  extension headers, Docker toolchain images, a full Grain language server
+  (completion, rename, refactoring), performance guides and community beta.
 - CI matrix covers PC, GB and NES builds plus emulator smokes, and SMS/GG builds
   plus structural ROM checks, not six toolchains. It also checks Grain sources
   and builds `examples/grain-demo/` for all four targets. SMS rendered-frame
@@ -122,11 +127,12 @@ cart; emulator passes are not recorded as hardware results.
 1. **SMS/GG runtime validation:** add a maintained headless SMS emulator or a
    manual emulator pass that confirms rendered frames, the B overlay and the
    bank-2 probe. Keep structural ROM checks as the CI gate until then.
-2. **Phase 3 tooling:** add Tiled `.tmx` import and Docker toolchain images.
-   Tracker music v1 is done; MOD/XM/IT import and compressed PSGlib streams can
-   extend it later. A full Grain language server can build on the thin VS Code
-   CLI adapter if completion, rename and refactoring are wanted. Revisit the CI
-   matrix once more toolchains are available.
+2. **Phase 3 tooling:** add Docker toolchain images. Tracker music and Tiled
+   `.tmx` import v1 are done; MOD/XM/IT import, compressed PSGlib streams and
+   multi-layer/animated Tiled maps can extend them later. A full Grain language
+   server can build on the thin VS Code CLI adapter if completion, rename and
+   refactoring are wanted. Revisit the CI matrix once more toolchains are
+   available.
 3. **Physical hardware (later):** when hardware and carts are available, run the
    manual checklist, record date/tester/hardware/ROM hash/result in its results
    table, and summarise the outcome in [`progress.md`](progress.md).

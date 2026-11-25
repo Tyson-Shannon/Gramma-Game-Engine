@@ -31,11 +31,20 @@ sample_rate = 22050
 name = "theme"               # -> const gr_song theme
 file = "assets/theme.tick"   # text tracker score, see "Music" below
 
+[[map]]
+name = "level"               # -> const gr_tileset level_tileset + gr_map level_map
+file = "assets/level.tmx"    # Tiled map, see "Tiled maps" below
+layer = "ground"             # optional; first tile layer when omitted
+bpp = 4
+
 [budgets.pc]
 rom_kb = 512
 vram_tiles = 1024
 
 [target.gb.image.kart]       # per-target overrides
+bpp = 2
+
+[target.gb.map.level]        # maps take the same bpp/CHR overrides
 bpp = 2
 
 [target.nes.image.kart]
@@ -71,9 +80,10 @@ sources = ["src/game.grain"] # or omit to auto-discover src/*.grain
 
 `generate()` also transpiles each `[grain].sources` file into
 `generated/<target>/grain_<stem>.c` and adds it to `generated_sources`. Grain
-sources use the asset names declared by `[[image]]`/`[[audio]]`/`[[music]]` through
-`extern` declarations, so language code and converted assets are compiled by
-the same build. v1 sources may also declare typed locals, user functions and
+sources use the asset names declared by
+`[[image]]`/`[[audio]]`/`[[music]]`/`[[map]]` through `extern` declarations, so
+language code and converted assets are compiled by the same build. v1 sources
+may also declare typed locals, user functions and
 fixed arrays; all of it is lowered to plain C before Meson sees the source list.
 See [`grain.md`](grain.md).
 
@@ -89,8 +99,41 @@ palette size.
 - **planar** (GB, NES, SMS, SNES): one bit-plane per 8-byte row, which is the
   native CHR layout of those PPU families.
 
-Tiles are deduplicated per image before packing. Backgrounds additionally emit
-a row-major `gr_map` of tile indices.
+Tiles are deduplicated per image before packing. Backgrounds and imported maps
+additionally emit a row-major `gr_map` of tile indices.
+
+### Tiled maps
+
+`[[map]]` imports one orthogonal tile layer from a Tiled `.tmx` file. It reuses
+the PNG converter for the tileset image, so the generated symbols are exactly
+the same as for a `kind = "background"` image: `const gr_tileset <name>_tileset`
+and `const gr_map <name>_map`. `examples/grain-demo` imports its track from
+`assets/track.tmx` this way, and its Grain source still refers to `track_tileset`
+and `track_map`.
+
+v1 supports:
+
+- orthogonal maps with 8x8 tiles;
+- tile layers encoded as CSV, XML `<tile gid="...">`, or base64 with raw, zlib
+  or gzip payloads;
+- one image-based tileset, inline in the `.tmx` or referenced through an
+  external `.tsx` (image paths resolve relative to the `.tsx`);
+- an optional `layer` name; without it, the first tile layer is imported.
+
+Tiled GID `0` is the empty tile and maps to Gramma tile index `0`. Other GIDs
+are offset by the tileset's `firstgid`, then remapped through the deduplicated
+tilesheet. The layer's width/height become the `gr_map` dimensions. Manifest
+entries use `kind: "map"` and include `layer`, `firstgid`, `map_width`,
+`map_height`, `tile_count`, `unique_tiles`, `bpp`, `packing`, `palette_colors`,
+`rom_bytes` and `source`.
+
+The importer rejects features it cannot represent faithfully: infinite maps,
+non-8x8 tiles, multiple tilesets, flipped/rotated GIDs, object/image/group
+layers, tile animations, malformed or too-short layers, and GIDs outside the
+tileset. CPU-side tile flipping, animated tiles and multi-layer compositing are
+not part of v1. `[target.<name>.map.<asset>]` accepts `bpp`, `layer`,
+`chr_bank`, `chr_tile` and `skip`; maps are placed like other backgrounds in
+NES CHR and use `#pragma bank 1` on Game Boy.
 
 ### NES CHR layout
 
@@ -103,7 +146,7 @@ because cc65 rejects arrays over 64 KB; C tilesets still reference
 followed by an identical copy. Both PPU pattern tables therefore contain the
 same tiles, so fetches do not depend on PPUCTRL's pattern-table bits.
 
-Images can be pinned to a bank and local tile index:
+Images and Tiled maps can be pinned to a bank and local tile index:
 
 ```toml
 [[image]]
@@ -129,7 +172,7 @@ font import without spending CHR space.
 
 ### Game Boy bank placement
 
-Generated GB image and audio C files start with `#pragma bank 1`. Keeping large
+Generated GB image, map and audio C files start with `#pragma bank 1`. Keeping large
 generated arrays out of fixed code leaves GBDK's banked-call helpers
 (`___sdcc_call_hl` and `___sdcc_bcall_ehl`) below `$4000`; in the shipped debug
 map `_HOME` ends at `$2C21` and those helpers sit at `$2E6E`/`$2E92`. The example
@@ -232,8 +275,9 @@ SFX. The manifest records `kind: "music"` with `notes`, `psg_bytes` and `frames`
 
 `gr check --target <name>` validates:
 
-- bpp support and palette size for every image,
-- nametable tile limit for backgrounds (960 tiles for a single NES nametable),
+- bpp support and palette size for every image and map,
+- nametable tile limit for backgrounds and maps (960 tiles for a single NES
+  nametable),
 - total unique tiles against VRAM,
 - live sprite count and per-scanline limit,
 - generated asset bytes against the ROM limit,

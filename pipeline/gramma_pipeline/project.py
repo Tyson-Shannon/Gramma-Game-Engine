@@ -35,6 +35,16 @@ class MusicAsset:
 
 
 @dataclass
+class MapAsset:
+    name: str
+    file: Path
+    layer: str | None = None     # first tile layer when omitted
+    bpp: int = 4
+    chr_bank: int = 0
+    chr_tile: int | None = None
+
+
+@dataclass
 class Project:
     root: Path
     name: str
@@ -43,6 +53,7 @@ class Project:
     images: list[ImageAsset] = field(default_factory=list)
     audio: list[AudioAsset] = field(default_factory=list)
     music: list[MusicAsset] = field(default_factory=list)
+    maps: list[MapAsset] = field(default_factory=list)
     budgets: dict[str, dict] = field(default_factory=dict)
     targets: dict[str, dict] = field(default_factory=dict)
     mapper: dict[str, dict] = field(default_factory=dict)
@@ -88,6 +99,16 @@ def load_project(root: Path) -> Project:
         project.music.append(MusicAsset(
             name=item["name"],
             file=root / item["file"],
+        ))
+    for item in data.get("map", []):
+        project.maps.append(MapAsset(
+            name=item["name"],
+            file=root / item["file"],
+            layer=item.get("layer"),
+            bpp=int(item.get("bpp", 4)),
+            chr_bank=int(item.get("chr_bank", 0)),
+            chr_tile=(None if item.get("chr_tile") is None
+                      else int(item["chr_tile"])),
         ))
     grain = data.get("grain", {})
     names = grain.get("sources")

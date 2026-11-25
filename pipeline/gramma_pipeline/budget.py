@@ -199,11 +199,11 @@ def check_budget(project: Project, target: str, manifest: dict) -> list[str]:
             errors.append(
                 f"{name}: palette uses {asset['palette_colors']} colors, "
                 f"{target} allows {limits['palette_colors']}")
-        if (asset["kind"] == "background" and
+        if (asset["kind"] in ("background", "map") and
                 limits["nametable_tiles"] is not None and
                 asset["tile_count"] > limits["nametable_tiles"]):
             errors.append(
-                f"{name}: background uses {asset['tile_count']} tiles, "
+                f"{name}: {asset['kind']} uses {asset['tile_count']} tiles, "
                 f"{target} nametable limit is {limits['nametable_tiles']}")
 
     unique_tiles = sum(asset["unique_tiles"] for asset in manifest["assets"])

@@ -7,8 +7,10 @@ converts the same source assets into each console's native tile formats.
 This repository currently contains a working **Phase 2 engine** plus the first
 Phase 3 tracks: **Grain v1**, a statically typed, GDScript-inspired language with
 locals, user functions and fixed arrays that transpiles ahead of time to the
-portable C API (no console interpreter), and a **tracker music compiler** that
-turns text scores into portable song data with PSGlib output for SMS/GG.
+portable C API (no console interpreter), a **tracker music compiler** that turns
+text scores into portable song data with PSGlib output for SMS/GG, and a **Tiled
+map importer** that turns `.tmx` tile layers into the same `gr_map`/`gr_tileset`
+assets as PNG backgrounds.
 Included are the portable core, SDL2 PC simulator, Game Boy/GBC backend
 (GBDK-2020, MBC1/MBC3/MBC5), NES backend (cc65, NROM/MMC1/MMC3), SMS/Game Gear
 backend (SDCC + devkitSMS, Sega slot-2 mapper), opt-in banking and vblank
@@ -205,7 +207,7 @@ targets/gb/           Game Boy / GBC backend (GBDK-2020)
 targets/nes/          NES backend (cc65, NROM/MMC1/MMC3, custom NMI)
 targets/sms/          SMS/Game Gear backend (SDCC + devkitSMS, VDP + PSG)
 tools/gr/             `gr` CLI: new, assets, grain, check, build, run, doctor
-pipeline/             PNG/WAV -> C arrays, target budget profiles, Grain compiler
+pipeline/             PNG/TMX/WAV/tick -> C arrays, budget profiles, Grain compiler
 examples/test-kart/   shared C example game and its source assets
 examples/grain-demo/  game written entirely in Grain
 editors/vscode-grain/ VS Code syntax highlighting and --check diagnostics

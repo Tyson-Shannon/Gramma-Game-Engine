@@ -5,8 +5,8 @@ max_sprites = 1
 width = 256
 height = 224
 
-# The demo reuses the shared test-kart art so it needs no binary assets of its
-# own. Grain source is discovered from [grain].sources below.
+# The demo reuses the shared test-kart kart art and imports the track from a
+# Tiled map. Grain source is discovered from [grain].sources below.
 [[image]]
 name = "kart"
 file = "../test-kart/assets/kart.png"
@@ -15,10 +15,10 @@ bpp = 4
 frame_width = 16
 frame_height = 16
 
-[[image]]
+[[map]]
 name = "track"
-file = "../test-kart/assets/track.png"
-kind = "background"
+file = "assets/track.tmx"
+layer = "road"
 bpp = 4
 
 [[audio]]
@@ -45,13 +45,13 @@ vram_tiles = 512
 [target.gb.image.kart]
 bpp = 2
 
-[target.gb.image.track]
+[target.gb.map.track]
 bpp = 2
 
 [target.nes.image.kart]
 bpp = 2
 
-[target.nes.image.track]
+[target.nes.map.track]
 bpp = 2
 
 [mapper.nes]

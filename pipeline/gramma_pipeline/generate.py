@@ -13,6 +13,7 @@ from .images import emit_image, process_image
 from .music import process_music
 from .project import load_project
 from .targets import PROFILES
+from .tiled import process_map
 
 
 def _ident(name: str) -> str:
@@ -146,6 +147,7 @@ def generate(root: Path, target: str, project=None,
     sources: list[str] = []
     overrides = project.targets.get(target, {})
     image_overrides = overrides.get("image", {})
+    map_overrides = overrides.get("map", {})
     audio_overrides = overrides.get("audio", {})
     music_overrides = overrides.get("music", {})
     packing = PROFILES.get(target, {}).get("packing", "chunky")
@@ -172,6 +174,41 @@ def generate(root: Path, target: str, project=None,
             "palette_colors": len(result.palette),
             "width": result.width,
             "height": result.height,
+            "rom_bytes": result.rom_bytes,
+            "source": result.source,
+        }
+        if target == "nes":
+            entry["chr_bank"] = asset.chr_bank
+            entry["chr_tile"] = asset.chr_tile
+        manifest["assets"].append(entry)
+        manifest["totals"]["rom_bytes"] += result.rom_bytes
+        manifest["totals"]["unique_tiles"] += result.unique_tiles
+
+    for asset in project.maps:
+        options = map_overrides.get(asset.name)
+        if options and options.get("skip", False):
+            continue
+        if options:
+            allowed = {"bpp", "layer", "chr_bank", "chr_tile"}
+            asset = replace(asset, **{k: v for k, v in options.items()
+                                      if k in allowed})
+        placements[asset.name] = asset
+        result = process_map(asset, packing)
+        image_results.append((asset.name, result))
+        entry = {
+            "name": asset.name,
+            "kind": "map",
+            "bpp": result.bpp,
+            "packing": result.packing,
+            "tile_count": len(result.tile_indices),
+            "unique_tiles": result.unique_tiles,
+            "palette_colors": len(result.palette),
+            "width": result.width,
+            "height": result.height,
+            "map_width": result.width // 8,
+            "map_height": result.height // 8,
+            "layer": result.layer,
+            "firstgid": result.firstgid,
             "rom_bytes": result.rom_bytes,
             "source": result.source,
         }
