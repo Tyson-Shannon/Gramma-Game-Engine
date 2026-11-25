@@ -1,0 +1,10 @@
+option('target', type: 'combo', choices: ['pc'], value: 'pc',
+       description: 'Backend to build')
+option('project', type: 'string', value: 'examples/test-kart',
+       description: 'Game project directory, relative to the repository root')
+option('sdl_include', type: 'string', value: '',
+       description: 'Fallback SDL2 include directory')
+option('sdl_arch_include', type: 'string', value: '',
+       description: 'Fallback architecture-specific SDL2 include directory')
+option('sdl_library', type: 'string', value: '',
+       description: 'Fallback SDL2 linker argument, e.g. -lSDL2')

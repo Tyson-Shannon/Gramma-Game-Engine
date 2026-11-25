@@ -1,0 +1,109 @@
+[project]
+name = "test-kart"
+default_target = "pc"
+max_sprites = 2
+width = 256
+height = 224
+
+[[image]]
+name = "kart"
+file = "assets/kart.png"
+kind = "sprite"
+bpp = 4
+frame_width = 16
+frame_height = 16
+
+[[image]]
+name = "altkart"
+file = "assets/altkart.png"
+kind = "sprite"
+bpp = 4
+frame_width = 16
+frame_height = 16
+
+[[image]]
+name = "track"
+file = "assets/track.png"
+kind = "background"
+bpp = 4
+
+[[audio]]
+name = "engine"
+file = "assets/engine.wav"
+sample_rate = 22050
+
+[budgets.pc]
+rom_kb = 512
+vram_tiles = 1024
+
+# Same source art, target-native pixel formats: Game Boy tiles are 1/2bpp
+# planar and its palettes hold four shades.
+[target.gb.image.kart]
+bpp = 2
+
+[target.gb.image.altkart]
+bpp = 2
+
+[target.gb.image.track]
+bpp = 2
+
+# Conservative budgets for console backends; `gr check --target <name>` uses them.
+[budgets.gb]
+rom_kb = 32
+vram_tiles = 384
+
+# Game Boy MBC layout: one switchable 16 KB ROM window at $4000-$7FFF and no
+# SRAM. Bank 2 holds a sentinel in src/gb/gb_bank_probe.c; B switches to it,
+# verifies the byte, then stages a tile/nametable overlay from bank 1.
+[mapper.gb]
+id = "mbc1"
+rom_banks = 4
+ram_banks = 0
+
+# NES pattern tables are 2bpp planar, like the Game Boy tiles above. The two
+# kart sheets share tile index 4 in different 8 KB CHR banks: B flips the MMC3
+# sprite bank so the shipped example visibly switches art during play.
+[target.nes.image.kart]
+bpp = 2
+chr_bank = 0
+chr_tile = 4
+
+[target.nes.image.altkart]
+bpp = 2
+chr_bank = 1
+chr_tile = 4
+
+[target.nes.image.track]
+bpp = 2
+chr_bank = 0
+
+[budgets.nes]
+rom_kb = 32
+vram_tiles = 512
+
+# NES mapper layout: prg_banks are 16 KB, chr_banks are 8 KB. nrom, mmc1 and
+# mmc3 are supported. This shipped example uses MMC3 with two CHR banks; use
+# `gr build --target nes --mapper nrom --chr-banks 1` for a fixed-layout ROM.
+[mapper.nes]
+id = "mmc3"
+prg_banks = 2
+chr_banks = 2
+
+# Master System / Game Gear use 4bpp planar art and 16-color palettes, which
+# are the default in the SMS profile. A four-bank (64 KB) Sega mapper lets the
+# example verify slot-2 banking in src/sms/sms_bank_probe.c.
+[target.sms.image.kart]
+bpp = 4
+
+[target.sms.image.altkart]
+bpp = 4
+
+[target.sms.image.track]
+bpp = 4
+
+[budgets.sms]
+rom_kb = 64
+vram_tiles = 512
+
+[mapper.sms]
+rom_banks = 4

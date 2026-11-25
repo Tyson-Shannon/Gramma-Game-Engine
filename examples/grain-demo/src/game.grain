@@ -1,0 +1,71 @@
+# The whole game, in Grain.
+#
+# Grain transpiles ahead of time to the same portable C API used by hand-written
+# Gramma games. There is no interpreter on the console. This demo drives one
+# kart with the D-pad, plays a sound on A, scrolls the background and uses an
+# on_draw() handler to set the sprite frame. The exact same file builds for PC,
+# Game Boy, NES and SMS/GG.
+
+extern tileset kart_tileset
+extern tileset track_tileset
+extern map track_map
+extern sfx engine_sfx
+
+entity Kart {
+    tileset: tileset = kart_tileset;
+    frame_w: int = 2;
+    frame_h: int = 2;
+    speed: fixed = 1.5;
+    beeps: int = 0;
+
+    on_update(dt: fixed) {
+        vx = 0;
+        vy = 0;
+        if (pad_down(P1, LEFT)) {
+            vx = -fmul(speed, dt);
+        }
+        if (pad_down(P1, RIGHT)) {
+            vx = fmul(speed, dt);
+        }
+        if (pad_down(P1, UP)) {
+            vy = -fmul(speed, dt);
+        }
+        if (pad_down(P1, DOWN)) {
+            vy = fmul(speed, dt);
+        }
+        if (pad_pressed(P1, A)) {
+            sfx_play(0, 1);
+            beeps += 1;
+        }
+        x = fclamp(x + vx, 0, itof(SCREEN_W - 16));
+        y = fclamp(y + vy, 0, itof(SCREEN_H - 16));
+        show(self, 0, ftoi(x), ftoi(y));
+    }
+
+    on_draw() {
+        set_frame(self, 0);
+    }
+}
+
+scene Race {
+    background: map = track_map;
+    tileset: tileset = track_tileset;
+
+    on_update(dt: fixed) {
+        scroll(0, 0);
+    }
+}
+
+game {
+    title = "Grain demo";
+    width = 256;
+    height = 224;
+    max_actors = 4;
+    players = 1;
+    required_buttons = [UP, DOWN, LEFT, RIGHT, A];
+
+    on_init() {
+        load_scene(Race);
+        spawn(Kart, itof(40), itof(80));
+    }
+}

@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev meson ninja-build gcc
+
+      - name: Python dependencies
+        run: python3 -m pip install pillow numpy pyboy nes-py
+
+      - name: Pipeline tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Grain syntax and typecheck
+        run: ./tools/gr/gr grain --check --project examples/grain-demo
+
+      - name: Build Grain demo (PC)
+        run: ./tools/gr/gr build --target pc --project examples/grain-demo
+
+      - name: Grain demo headless smoke test
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: ./tools/gr/gr run --target pc --project examples/grain-demo --frames 10 --scale 1
+
+      - name: Build Grain demo (Game Boy)
+        run: ./tools/gr/gr build --target gb --project examples/grain-demo
+
+      - name: Build Grain demo (NES)
+        run: ./tools/gr/gr build --target nes --project examples/grain-demo
+
+      - name: Build PC simulator
+        run: ./tools/gr/gr build --target pc
+
+      - name: C unit tests
+        run: meson test -C build/test-kart-pc --print-errorlogs
+
+      - name: Headless simulator smoke test
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: ./tools/gr/gr run --target pc --frames 10 --scale 1
+
+      - name: Build Game Boy MBC ROM
+        run: ./tools/gr/gr build --target gb
+
+      - name: Verify Game Boy MBC ROM layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = Path("build/test-kart-gb/game.gb").read_bytes()
+          assert len(rom) == 4 * 16384, len(rom)
+          assert rom[0x147] == 0x01, "expected MBC1 cart type"
+          assert rom[0x148] == 0x01, "expected four 16 KB ROM banks"
+          assert rom[2 * 16384] == 0x3e, "expected bank-2 sentinel function"
+          PY
+
+      - name: Game Boy emulator smoke
+        run: python3 tests/emulator_smoke.py gb build/test-kart-gb/game.gb
+
+      - name: Build fixed-layout Game Boy ROM
+        run: ./tools/gr/gr build --target gb --gb-mapper none --gb-rom-banks 2
+
+      - name: Verify fixed-layout Game Boy ROM
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = Path("build/test-kart-gb/game.gb").read_bytes()
+          assert len(rom) == 2 * 16384, len(rom)
+          assert rom[0x147] == 0x00, "expected plain ROM cart type"
+          assert rom[0x148] == 0x00, "expected two 16 KB ROM banks"
+          PY
+
+      - name: Fixed-layout Game Boy emulator smoke
+        run: python3 tests/emulator_smoke.py gb build/test-kart-gb/game.gb --no-toggle
+
+      - name: Build NES ROM
+        run: ./tools/gr/gr build --target nes
+
+      - name: Verify NES ROM layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = Path("build/test-kart-nes/game.nes").read_bytes()
+          assert rom[:4] == b"NES\x1a"
+          assert rom[4] == 2              # 32 KB PRG
+          assert rom[5] == 2              # 16 KB CHR
+          assert (rom[6] >> 4) == 4       # MMC3
+          assert len(rom) == 16 + 2 * 16384 + 2 * 8192
+          chr_data = rom[16 + 2 * 16384:]
+          assert chr_data[:4096] == chr_data[4096:8192]
+          assert chr_data[8192:12288] == chr_data[12288:16384]
+          PY
+
+      - name: NES emulator smoke
+        run: python3 tests/emulator_smoke.py nes build/test-kart-nes/game.nes
+
+      - name: Build four-bank NES ROM
+        run: ./tools/gr/gr build --target nes --prg-banks 4
+
+      - name: Verify four-bank NES ROM layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = Path("build/test-kart-nes/game.nes").read_bytes()
+          assert rom[:4] == b"NES\x1a"
+          assert rom[4] == 4              # 64 KB PRG
+          assert rom[5] == 2              # 16 KB CHR
+          assert (rom[6] >> 4) == 4       # MMC3
+          assert len(rom) == 16 + 4 * 16384 + 2 * 8192
+          assert rom[16] == 0xa5          # PRG0 sentinel read through RAMCODE
+          PY
+
+      - name: Four-bank NES emulator smoke
+        run: python3 tests/emulator_smoke.py nes build/test-kart-nes/game.nes
+
+      - name: Install SMS/GG toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sdcc
+          DK="$HOME/.cache/gramma/tools/devkitsms"
+          mkdir -p "$DK"
+          git -C "$DK" init -q
+          git -C "$DK" remote add origin https://github.com/sverx/devkitSMS.git
+          git -C "$DK" fetch -q --depth 1 origin \
+            561bc2cb9829cdf2e31ad8cd43835037c8c44a63
+          git -C "$DK" checkout -q --detach FETCH_HEAD
+
+      - name: Build Grain demo (SMS)
+        run: ./tools/gr/gr build --target sms --project examples/grain-demo
+
+      - name: Build four-bank SMS ROM
+        run: ./tools/gr/gr build --target sms
+
+      - name: Verify SMS ROM header and bank sentinels
+        run: python3 tests/sms_rom_check.py build/test-kart-sms/game.sms --banks 4
+
+      - name: Build Game Gear ROM
+        run: ./tools/gr/gr build --target sms --gg
+
+      - name: Verify Game Gear ROM header
+        run: python3 tests/sms_rom_check.py build/test-kart-sms/game.gg --banks 4 --gg
+
+      - name: Build fixed-layout SMS ROM
+        run: ./tools/gr/gr build --target sms --sms-rom-banks 2
+
+      - name: Verify fixed-layout SMS ROM
+        run: python3 tests/sms_rom_check.py build/test-kart-sms/game.sms --banks 2

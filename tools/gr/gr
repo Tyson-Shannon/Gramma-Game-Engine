@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Gramma command line tool ('gr')."""
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, os.path.join(REPO, "pipeline"))
+sys.path.insert(0, HERE)
+
+from gramma_cli.main import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

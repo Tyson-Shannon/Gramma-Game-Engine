@@ -1,0 +1,720 @@
+# Progress log
+
+Short, chronological record of engine milestones. See
+[`roadmap.md`](roadmap.md) for the living plan and
+[`banking.md`](banking.md) for the bank abstraction design.
+
+## 2026-11-24 - Grain language toolchain shipped (Phase 3 track 1)
+
+### Progress
+
+- Started Phase 3 with the flagship developer-experience track: Grain, a small
+  statically typed, GDScript-inspired language that transpiles ahead of time to
+  the portable C API. There is no console interpreter; the generated C is an
+  ordinary C89 translation unit compiled by every backend.
+- The compiler is integrated into `gr build`/`gr check`, so a Grain-only project
+  builds for PC, GB, NES and SMS/GG from one source file. `gr grain --check`
+  gives fast `file:line:col` diagnostics from the command line.
+
+### Changes
+
+- Added `pipeline/gramma_pipeline/grain/`: `errors.py` (located diagnostics),
+  `ast.py`, `lexer.py` (numbers/strings/comments and exact positions),
+  `parser.py` (extern/entity/scene/game declarations, handlers, statements and
+  expression precedence; optional `;` and `:` with brace-delimited blocks),
+  `typechecker.py` (types, fields, builtin arity, handler signatures, constants,
+  numeric/bool rules and fixed coercion) and `codegen.py` (entity pools and
+  spawn, scene/bg state, draw registry, handlers, `gr_config` and `main()`).
+- `Project.grain_sources` reads `[grain] sources` or auto-discovers
+  `src/*.grain`/root `*.grain`. `generate()` transpiles each source into
+  `generated/<target>/grain_<stem>.c`, adds it to `generated_sources` and
+  records its entities/scenes in the manifest.
+- `tools/gr/gramma_cli/main.py` gained `gr grain`/`gr transpile` with `--check`,
+  `--out` and `--target`, a Grain line in `gr doctor` and clean `GrainError`
+  reporting through the existing CLI dispatch.
+- Added `examples/grain-demo/`: a complete game in `src/game.grain` reusing the
+  shared test-kart assets, with moving sprite input, SFX, scrolling background
+  and an `on_draw()` frame handler. Added `tests/test_grain.py` (front end,
+  diagnostics, codegen, C89 syntax check and pipeline integration).
+- Added [`docs/grain.md`](grain.md) and updated README, API, roadmap and this
+  log so Grain is documented as shipped rather than future work.
+
+### Verification
+
+- Python tests: 53/53, including the new Grain lexer/parser/typechecker/codegen
+  and pipeline tests. Generated C passes
+  `gcc -std=c89 -pedantic -Wall -Wextra -fsyntax-only -Icore/include`.
+- `gr grain --check --project examples/grain-demo` and
+  `gr grain --project examples/grain-demo --out /tmp/opencode/grain-out` pass.
+- `gr build` passes for `examples/grain-demo` on PC, GB, NES, SMS and Game Gear
+  (`--gg`) with rc=0;
+  the SMS ABI linker warnings remain the known devkitSMS case. Headless PC run
+  (`SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`, 10 frames) exits 0.
+- `.github/workflows/ci.yml` parses cleanly (one job, 33 steps, six new Grain
+  steps). A full CI-equivalent pass was re-run locally with all stages green:
+  53/53 Python tests, 5/5 Meson C tests, PC/GB/NES emulator smokes, all
+  SMS/GG structural checks and the Grain demo builds. SMSlib ABI warnings remain
+  the known devkitSMS case. The user's informal report that SMS/GG files seem
+  to run in an emulator is recorded only as an observation, not as a formal CI
+  or hardware result.
+
+### Next steps
+
+1. Confirm the six new Grain steps pass in hosted GitHub Actions after the next
+   push; the equivalent script already passes locally.
+2. Extend Grain with local variables, user functions, arrays and editor
+   diagnostics; add a VS Code syntax/diagnostic extension.
+3. Continue other Phase 3 tracks (tracker music/PSGlib, Tiled maps, templates,
+   Docker) while keeping physical hardware deferred and SMS rendered-frame
+   checks pending.
+
+## 2026-11-24 - SMS/GG backend shipped
+
+### Progress
+
+- Added the SMS/Game Gear backend on top of the same portable game source and
+  opt-in bank/overlay abstractions. SDCC 4.5.0 plus a pinned devkitSMS checkout
+  now produce bootable `.sms` and `.gg` ROMs.
+- Physical hardware validation remains deferred. SMS/GG CI uses structural ROM
+  checks because no maintained headless SMS emulator is available in the CI
+  image; rendered-frame and hardware probes are recorded as pending, not passed.
+
+### Changes
+
+- Added `targets/sms/src/sms_backend.c`: 256x192 VDP setup, a 32x28 nametable,
+  4bpp tile uploads, sprite attributes in the upper 256 VRAM tiles, SMS/GG CRAM
+  conversion, two joypads, vblank overlay hooks and a simple SN76489 tone
+  sequencer. Game Gear uses SMSlib's GG palette/api variants through
+  `-DTARGET_GG`; START maps to the GG START bit and aliases button 1 on SMS.
+- Added `targets/sms/src/sms_header.c`, which emits the 16-byte `TMR SEGA`
+  header and derives the region/size byte from the bank count. `makesms` then
+  pads to 16 KB multiples and fills in the checksum.
+- Added `core/include/gramma/target/sms/mapper.h`, `core/src/sms_mapper.c` and
+  `tests/test_sms_mapper.c`. One slot maps banks 2..N-1 into `$8000-$BFFF`
+  through `$FFFF`; a two-bank ROM has no slot and never writes the mapper.
+- Added `tools/gr/gramma_cli/sms.py` and wired `gr doctor`, `gr build` and
+  `gr run` to SDCC/devkitSMS. `gr build --target sms --gg` emits Game Gear
+  output; `--sms-rom-banks` overrides `[mapper.sms]`. Banked sources named
+  `bankN_*.c` compile with `--constseg BANKN` and link into `BANK2..BANKN-1`.
+- Updated the example with 4bpp SMS asset overrides, a four-bank layout and a
+  bank-2 sentinel. B stages alternate sprite art at VRAM tile 256, patches an
+  8x8 nametable region and verifies the Sega mapper probe.
+- Added `tests/sms_rom_check.py`, Python mapper config tests, a Meson SMS mapper
+  test and CI steps for SMS, GG and fixed two-bank builds. Documentation across
+  README, API, targets, banking, asset pipeline, hardware validation, roadmap
+  and progress now reflects SMS/GG and keeps hardware results deferred.
+
+### Verification
+
+- Python tests: 29/29. Meson C tests: 5/5, including the new SMS mapper test.
+- PC, GB and NES builds still pass; headless PC smoke runs, and PyBoy/nes-py
+  report four GB idle colors with 384 overlay pixels and six NES idle colors
+  with 264 sprite pixels.
+- `.github/workflows/ci.yml` parses cleanly (single job, 27 steps including the
+  SMS/GG toolchain, build and structural checks). A full CI-equivalent pass was
+  run locally: every stage green, from Python/Meson tests through PC/GB/NES
+  emulator smokes and all three SMS/GG structural checks. `gr targets` now
+  reports NES as `cc65 NROM/MMC1/MMC3`.
+- Default SMS build: 65,536 bytes, export region/size byte `0x4e`, bank 2
+  sentinel `5a a5 01 02`, bank 3 sentinel `3c c3 03 04`, checksum verified.
+- Game Gear build: 65,536 bytes, region/size byte `0x7e`, same bank sentinels.
+  Fixed two-bank build: 32,768 bytes, region/size byte `0x4c`, no switchable
+  banks. All three pass `tests/sms_rom_check.py`.
+- SMSlib's prebuilt libraries carry older SDCC ABI markers, so `sdld` emits
+  `sdcccall` warnings and exits non-zero after writing a valid IHX. The build
+  driver accepts that specific case only when no `?ASlink-Error-` is present;
+  real link errors still fail the build.
+- No SMS rendered-frame emulator result or physical hardware result is claimed.
+  The unmaintained `pySMS` package has no usable public repository/docs and
+  has not been validated as a headless CI emulator.
+
+### Next steps
+
+1. Find or write a maintained headless SMS/GG emulator check for rendered
+   frames, the B overlay and the bank-2 probe; keep structural ROM checks as
+   the CI gate until that exists.
+2. Continue Phase 3: Grain parser/typechecker/C transpiler, tracker music (with
+   PSGlib output for SMS/GG), editor integration and Docker toolchain images.
+3. Revisit physical GB/NES/SMS/GG validation later and record real hardware
+   observations in [`hardware-validation.md`](hardware-validation.md); skipped
+   checks must stay deferred.
+
+## 2026-11-24 - Game Boy MBC and vblank overlays
+
+### Progress
+
+- Completed the second half of Phase 2: Game Boy MBC bank sets, a portable
+  vblank overlay queue and a shipped example that changes GB tile art and part
+  of the nametable with B.
+- Fixed the larger NES PRG build after overlay integration: the overlay code now
+  links into the switchable code bank so `ROMFIX` stays below 16 KB.
+
+### Changes
+
+- Added `gramma/target/gb/mapper.h`, `core/src/gb_mapper.c` and GB backend
+  writers for MBC1/MBC3/MBC5 ROM and SRAM banks. `[mapper.gb]` and the
+  `--gb-mapper`, `--gb-rom-banks` and `--gb-ram-banks` overrides select the
+  cartridge type and emit GBDK cart/ROM/RAM flags.
+- Added opt-in `gramma/overlay.h` and `core/src/overlay.c`. Staging copies source
+  bytes immediately; backends apply queued tile and nametable patches during
+  vblank. GB defers scene uploads and overlay flushes until after
+  `wait_vbl_done()`; NES patches the nametable with a 64-write vblank budget and
+  rejects tile uploads because CHR is ROM.
+- The example ships a GBDK `BANKED` sentinel in bank 2. It returns `0x5a` from
+  fixed-code trampolines rather than patching a temporary ROM; the generated
+  bank-2 function `3e 5a c9` is checked in CI.
+- Generated GB image/audio C files now start with `#pragma bank 1`. This keeps
+  GBDK's `___sdcc_call_hl` and `___sdcc_bcall_ehl` helpers below `$4000`; the
+  debug map places `_HOME` at `$2C21` and the helpers at `$2E6E`/`$2E92`.
+- For NES layouts above 32 KB, `overlay.c` compiles into a `CODE2` segment in
+  the switchable code bank. The rest of the program still executes from
+  `ROMFIX`, and `gr_nes_prg_read()` remains RAM-resident.
+- Added `tests/test_gb_mapper.c`, `tests/test_overlay.c` and their Meson entries.
+
+### Verification
+
+- Python tests: 24/24. Meson C tests: 4/4. PC, GB and NES builds and the
+  headless PC smoke test pass.
+- Default MBC1 ROM: 65,536 bytes, cart byte `0x01`, ROM-size byte `0x01`.
+  PyBoy renders four colors; B changes 384 pixels. A plain two-bank ROM still
+  renders four colors and leaves the toggle inert.
+- Default NES ROM: 49,168 bytes, MMC3 with two PRG and two CHR banks. `nes-py`
+  renders six idle colors; B changes 264 pixels. The four-bank MMC3 build is
+  81,936 bytes and passes the same smoke.
+- Four-, eight- and sixteen-bank MMC3 plus four-bank MMC1 layouts build. The
+  16-bank ROM emits the NES 2.0 size MSB correctly.
+
+### Next steps
+
+- Move the emulator checks into CI and add a physical-hardware validation
+  checklist.
+
+## 2026-11-24 - Reusable emulator CI
+
+### Progress
+
+- Emulator checks now run from a shared script in CI instead of ad-hoc local
+  commands. The stale NROM header assertion in CI was replaced with checks for
+  the shipped MMC3 and MBC1 layouts.
+
+### Changes
+
+- Added `tests/emulator_smoke.py` with `gb` and `nes` subcommands. PyBoy and
+  `nes-py` are optional local dependencies installed by CI.
+- Rewrote `.github/workflows/ci.yml` to build the PC simulator, default MBC1 GB
+  ROM, plain two-bank GB ROM, default MMC3 NES ROM and four-bank MMC3 NES ROM,
+  then verify their headers and rendered frames.
+- Added [`hardware-validation.md`](hardware-validation.md) with manual checks
+  for GB MBC probing/overlays and NES CHR/PRG bank behavior.
+
+### Verification
+
+- `python3 tests/emulator_smoke.py gb build/test-kart-gb/game.gb` reports four
+  colors and 384 overlay pixels. The plain-ROM `--no-toggle` variant reports
+  four colors and no toggle.
+- `python3 tests/emulator_smoke.py nes build/test-kart-nes/game.nes` reports six
+  idle colors and 264 sprite pixels for both the default and four-bank builds.
+
+### Next steps
+
+- Validate the same banked paths on real GB and NES hardware using the new
+  checklist; add more backends and Phase 3 language work.
+
+## 2026-11-24 - Phase 2 wrap-up and next steps
+
+### Progress
+
+- The Phase 2 feature set is complete: PC, GB and NES builds, bank sets,
+  overlays, larger PRG/CHR layouts and emulator-backed CI all work from one
+  source tree.
+- Documentation now matches the shipped implementation, and the remaining work
+  is recorded as explicit hardware, backend and language tasks.
+
+### Changes
+
+- Updated `README.md`, `docs/api.md`, `docs/targets.md`,
+  `docs/asset-pipeline.md`, `docs/architecture.md` and `docs/banking.md` for
+  GB MBC bank sets, `#pragma bank 1`, vblank overlays, the NES `CODE2` segment
+  and the emulator CI commands.
+- Added [`hardware-validation.md`](hardware-validation.md) with manual GB/NES
+  bank checks and a results table that stays pending until real hardware is
+  tested.
+- Corrected the CI NES CHR-mirroring assertion to compare each 4 KB half of an
+  8 KB bank separately; the earlier version compared one 4 KB half with the
+  remaining 12 KB.
+- Expanded the roadmap's next steps into hardware validation, SMS/GG and
+  Phase 3 language/tooling tasks.
+
+### Verification
+
+- Python tests: 24/24. Meson C tests: 4/4. PC build and headless frame dump
+  pass. The CI workflow YAML parses with 20 steps.
+- CI-equivalent checks re-run locally: default MBC1 GB (4 colors, 384 changed
+  pixels), plain two-bank GB (4 colors, no toggle), default MMC3 NES and
+  four-bank MMC3 NES (6 idle colors, 264 changed pixels) all pass.
+
+### Next steps
+
+1. Run the [`hardware-validation.md`](hardware-validation.md) checks on real
+   GB/GBC hardware with an MBC1 flash cart and on real NES hardware with an
+   MMC3 cart. Record date, tester, cart, ROM hash and observation in the results
+   table; leave it pending if hardware is unavailable.
+2. Add the SMS/GG backend next, reusing the generic bank-set and overlay
+   abstractions and adding a budget profile plus emulator smoke coverage.
+3. Continue Phase 3 work: Grain parser/typechecker/C transpiler, a tracker music
+   compiler, editor integration and Docker toolchain images.
+
+## 2026-11-24 - Hardware validation deferred
+
+### Progress
+
+- Physical hardware checks are intentionally skipped for now so software work
+  can continue without waiting for GB/NES flash carts.
+- Emulator CI remains the verification gate. No hardware result is claimed, and
+  the manual checklist stays available for a later pass.
+
+### Changes
+
+- `docs/roadmap.md` now marks hardware validation as deferred and starts the
+  active next-step list with the SMS/GG backend.
+- `docs/hardware-validation.md` records the deferral, keeps its results row as
+  `_deferred_`, and states that skipped is not passed.
+- This entry records the decision in the chronological log.
+
+### Verification
+
+- Documentation-only change: no ROMs or code were rebuilt. The existing results
+  still stand: 24/24 Python tests, 4/4 Meson C tests and passing PC/GB/NES
+  emulator smokes.
+
+### Next steps
+
+1. Add the SMS/GG backend: target profile, bank-set and overlay hooks, build
+   driver and emulator smoke, reusing the GB/NES abstractions.
+2. Continue Phase 3 tooling: Grain parser/typechecker/C transpiler, tracker music
+   compiler, editor integration and Docker toolchain images.
+3. Revisit `hardware-validation.md` later when real hardware and carts are
+   available; record date, tester, hardware, ROM hash and result then.
+
+## 2026-11-24 - NES backend verified
+
+### Progress
+
+- Completed the Phase 2 NES first pass: cc65/NROM, mapper 0, 32 KB PRG, 8 KB
+  CHR, one nametable and 8x8 sprites.
+- Removed the last temporary debug instrumentation from
+  `targets/nes/src/nes_backend.c`.
+
+### Changes
+
+- CHR generation mirrors one 4 KB table into both pattern tables.
+- Sprite tiles are offset from `nes_chr_data`, with `nes_chr_data + 64` used by
+  the generated kart tileset.
+- OAM is staged at `$7F00` and sent with hardware DMA.
+- Palette conversion is cached per slot; input reads eight serial controller
+  bits into the canonical button bitmap.
+- README, `docs/roadmap.md`, `docs/targets.md`, `docs/api.md`,
+  `docs/asset-pipeline.md`, `docs/architecture.md` and CI were updated with NES
+  status, limits and next steps.
+
+### Verification
+
+- Clean NES build: `build/test-kart-nes/game.nes`, 40,976 bytes, mapper 0.
+- `nes-py` smoke: 6 idle colors, sprites animate/move on Right, coarse scroll
+  changes the rightmost nametable column, no black frames.
+- Python pipeline tests, Meson C tests, PC/GB/NES builds and the headless PC
+  smoke test all passed.
+
+### Next steps
+
+- Design the banking/overlay abstraction before adding more consoles.
+- Replace the cc65 NMI to unlock fine scrolling and banked CHR updates.
+- Validate on physical hardware and add a second mapper.
+
+## 2026-11-24 - Banking abstraction foundation
+
+### Progress
+
+- Added the opt-in bank API and an NES mapper extension. The base `gramma.h`
+  API is unchanged; games opt in by including `gramma/bank.h` or
+  `gramma/target/nes/mapper.h`.
+- The NES backend now initialises an NROM mapper state with zero PRG/CHR
+  switchable slots. Unsupported mapper IDs fail explicitly.
+
+### Changes
+
+- New `core/include/gramma/bank.h` and `core/src/bank.c`: `gr_bank_set`
+  tracks selected banks for up to `GR_BANK_MAX_SLOTS` windows and calls an
+  optional backend writer.
+- New `core/include/gramma/target/nes/mapper.h` and
+  `core/src/nes_mapper.c`: `gr_nes_mapper_init()` currently supports NROM only.
+- `targets/nes/src/nes_backend.c` creates and initialises the mapper state in
+  `nes_init()`.
+- New `tests/test_bank.c` exercises slot validation, cached banks and a fake
+  hardware writer, plus NROM/unsupported-mapper behavior.
+- New `docs/banking.md` documents the design and status.
+- `README.md`, `docs/roadmap.md`, `docs/api.md`, `docs/targets.md` and
+  `docs/architecture.md` now link to and summarise the bank extension.
+
+### Verification
+
+- Meson tests: 2/2, including the new `bank abstraction` test.
+- PC, GB and NES builds all passed with no new warnings.
+- `nes-py` smoke still passes after the NES backend change: sprites move on
+  Right, column 31 scrolls and no black frames appear.
+- Python pipeline tests: 6/6.
+
+### Next steps
+
+- Implement MMC1 and MMC3 register writers behind the NES mapper extension.
+- Add mapper selection and bank layout to `project.toml` and the budget linter.
+- Add Game Boy MBC bank sets so the abstraction is exercised by two consoles.
+- Design tile/nametable overlays and a replacement NMI that shares the vblank
+  write budget with banked CHR updates.
+
+## 2026-11-24 - Custom NES NMI and fine scrolling
+
+### Progress
+
+- Replaced cc65's stock NMI with a Gramma-owned startup/NMI so background fine
+  scrolling works. The stock 2.19 NMI resets `$2005` to zero on every vblank,
+  which made only coarse (8-pixel) scrolling possible.
+- Coarse scrolling is unchanged: the backend still rewrites nametable column 31
+  as the map column advances. The NMI only supplies the low three scroll bits.
+
+### Changes
+
+- New `targets/nes/src/nes_crt0.s`, copied from cc65 2.19's NES crt0 with one
+  deliberate change: the NMI writes `$7EE0`/`$7EE1` to `$2005` after flushing
+  the PPU buffer and resetting `$2006`. It exports `__STARTUP__` and owns all
+  three hardware vectors.
+- `tools/gr/gramma_cli/main.py` now compiles `targets/nes/src/*.s` into every
+  NES build, so the custom crt0 replaces the library startup.
+- `targets/nes/src/nes_backend.c` defines and writes the scroll bytes at
+  `$7EE0`/`$7EE1`. They sit outside cc65's parameter stack and the `$7F00` OAM
+  DMA page. Only `scroll_x & 7` and `scroll_y & 7` are published to the NMI.
+- Vblank waiting still polls `$70`, which the custom NMI now sets explicitly.
+
+### Verification
+
+- Clean NES build: 40,976-byte mapper 0 ROM, no assembler/linker warnings.
+  `game.map` contains exactly one `STARTUP` segment from `nes_crt0.o`.
+- Vectors decode to NMI `$803B`, RESET `$8000`, IRQ `$8069`.
+- Disassembly of `$803B` confirms `ppubuf_flush`, the `$2006` reset, then
+  `lda $7EE0 / sta $2005` and `lda $7EE1 / sta $2005`.
+- `nes-py` smoke passes: 6 idle colors, sprites move/animate on Right, right
+  column changes, no black frames. A new check tracks a background boundary at
+  scanline 160 and confirms sub-tile shifts of -1 and -2 pixels between coarse
+  column updates (idle boundary is fixed at x=15).
+- Python pipeline tests 6/6, Meson C tests 2/2, PC/GB/NES builds and the
+  headless PC smoke test all still pass.
+
+### Next steps
+
+- Implement MMC1/MMC3 writers, `project.toml` mapper/bank layout and Game Boy
+  MBC sets. Any banked CHR updates must fit in the vblank budget now shared with
+  the custom NMI.
+- Add tile/nametable overlays and validate on physical hardware.
+
+## 2026-11-24 - MMC1/MMC3 mapper writers and mapper configuration
+
+### Progress
+
+- Moved the NES mapper extension from "NROM only" to real MMC1 and MMC3
+  register protocols. The generic bank sets now translate `gr_bank_select()`
+  into the mapper's hardware writes.
+- Added mapper layout configuration to `project.toml` and validation to the
+  budget linter, so an unsupported mapper cannot be configured silently.
+
+### Changes
+
+- `core/include/gramma/target/nes/mapper.h` adds `gr_nes_io_write_fn`,
+  `gr_nes_mapper_init_hw()` and `gr_nes_mapper_register_write()`. The mapper
+  state now carries MMC1's 5-bit shift register and MMC3's bank-select latch.
+- `core/src/nes_mapper.c` implements:
+  - MMC1: 1 x 16 KB PRG slot and 2 x 4 KB CHR slots; serial bit writes to
+    $8000-$FFFF commit to the control/PRG/CHR0/CHR1 registers. Init programs
+    control `$0E` (vertical mirroring, 16 KB PRG, 4 KB CHR).
+  - MMC3: 2 x 8 KB PRG slots (R6/R7) and 4 x 2 KB CHR slots (R0-R3); each bank
+    write emits `$8000` register select then `$8001` data. Init sets vertical
+    mirroring and PRG/CHR mode 0.
+  - NROM still exposes zero slots; MMC1/MMC3 without an IO writer return
+    `GR_ERR_INVALID_ARG`.
+- `pipeline/gramma_pipeline/project.py` reads `[mapper.nes]`; `budget.py`
+  validates the mapper ID (nrom/mmc1/mmc3), power-of-two bank counts, NROM's
+  fixed 2 PRG / 1 CHR layout, and rejects banked mappers until the build driver
+  can emit their ROM header.
+- `examples/test-kart/project.toml` and the `gr new` template now contain an
+  explicit NROM mapper section.
+- `tests/test_bank.c` gained MMC1/MMC3 protocol tests with a fake IO recorder;
+  `tests/test_pipeline.py` gained five mapper-configuration tests.
+
+### Verification
+
+- Meson C tests: 2/2; Python tests: 11/11.
+- `gr check --target nes`: budget OK with the explicit NROM config.
+- PC, GB and NES builds pass; the NES ROM is still 40,976 bytes / mapper 0.
+- `nes-py` smoke passes with sub-tile background shifts and no black frames.
+
+### Next steps
+
+- Wire the NES build driver to emit the configured mapper header and program
+  MMC1/MMC3 at startup, then verify a banked ROM in `nes-py`.
+- Add Game Boy MBC bank sets and tile/nametable overlays.
+- Move emulator checks into CI and validate on physical hardware.
+
+## 2026-11-24 - Mapper-aware NES ROM generation
+
+### Progress
+
+- The NES build driver now emits the mapper selected by `[mapper.nes]`. NROM,
+  MMC1 and MMC3 ROMs all build and run in `nes-py` with identical rendering.
+- The custom crt0 programs mapper registers at startup, so banked cartridges
+  no longer rely on the emulator's default mapper state.
+
+### Changes
+
+- `targets/nes/src/nes_crt0.s` is parameterised by `GR_NES_MAPPER`,
+  `GR_NES_PRG_BANKS` and `GR_NES_CHR_BANKS`. The iNES header is generated from
+  those symbols and `mapper_init` programs MMC1's serial registers or MMC3's
+  bank registers before `main()` runs.
+- `tools/gr/gramma_cli/main.py` passes the mapper ID and bank counts to ca65
+  with `--asm-define`. iNES byte 4 stays in 16 KB units for every mapper.
+- `pipeline/gramma_pipeline/budget.py` now accepts all three mapper IDs with a
+  fixed 32 KB PRG / 8 KB CHR layout; larger banks are rejected explicitly.
+- MMC3 initialization sets bit 7 of `$8000` (4 KB CHR mode), keeps bit 6 clear
+  (PRG mode 0), and programs R0-R7 so both pattern tables map to the full 8 KB
+  CHR ROM. `$E000` is now correctly treated as IRQ disable, not mode control.
+- `core/src/nes_mapper.c` and `tests/test_bank.c` were updated to match the
+  MMC3 register semantics (bit 7 in every `$8000` write, R1/R3/R4/R5 programmed
+  at init).
+- `tests/test_pipeline.py` gained tests for valid MMC1/MMC3 layouts.
+
+### Verification
+
+- Meson C tests: 2/2; Python tests: 13/13.
+- PC, GB and NES builds pass; NROM/MMC1/MMC3 ROMs are each 40,976 bytes with
+  headers `4e45531a020103...`, `4e45531a020113...` and `4e45531a020143...`.
+- `gr check` accepts all three mapper layouts and rejects non-power-of-two or
+  non-fixed bank counts.
+- `nes-py` smoke passes for all three ROMs: 6 colors, idle sprite box at
+  (44,120) moving right with Right held, sub-tile background shifts, no black
+  frames.
+- Headless PC smoke and all builds pass after the change.
+
+### Next steps
+
+- Support larger PRG/CHR layouts and bank-aware asset placement (the current
+  generated CHR mirrors one 4 KB table, so switching between its two 4 KB banks
+  is visually identical).
+- Add Game Boy MBC bank sets and tile/nametable overlays.
+- Move emulator checks into CI and validate on physical hardware.
+
+## Runtime mapper wiring (NES)
+
+### Progress
+
+- The configured `[mapper.nes]` mapper is now installed once by `gr_init()` on
+  the NES, so games can call the C bank API during play instead of relying only
+  on the assembly startup programming.
+- Added a real NES memory writer callback to the portable mapper core. The fake
+  IO writer used by unit tests remains the same code path, so no NES-specific
+  memory access leaks into the C tests.
+
+### Changes
+
+- `targets/nes/src/nes_crt0.s` exports `_gr_nes_mapper_id` as a real byte in
+  `RODATA`. An absolute symbol was tried first, but C reads absolute symbols as
+  addresses, so the backend read the wrong value; the ROM byte maps to CPU
+  `$B8D4` in the switch test ROM and contains `4` for MMC3.
+- `nes_backend.c` installs `gr_nes_mapper_runtime_init()` in `nes_init()` with a
+  writer that stores to `$8000-$FFFF`, and exposes runtime accessors through
+  `gr_nes_mapper_prg_banks()` / `gr_nes_mapper_chr_banks()`.
+- `core/src/nes_mapper.c` now owns a single runtime mapper state. MMC1 control
+  changed from `$0E` to `$1E` so 4 KB CHR mode makes `$B000/$C000` effective.
+  MMC3 startup defaults R7 to bank 1; otherwise `$A000-$BFFF` aliases bank 0.
+- `tests/test_bank.c` covers control `$1E`, the MMC3 R7 default, and the runtime
+  init/id/bank-set accessors plus a CHR slot write.
+- Games should switch CHR banks only for now: PRG code executes in MMC3's
+  switchable windows, so changing R6/R7 from a running game would swap out the
+  caller.
+
+### Verification
+
+- Meson C tests 2/2 and Python tests 13/13 pass; PC, GB and NES builds and the
+  headless PC smoke pass.
+- NROM, MMC1 and MMC3 ROMs were rebuilt at 40,976 bytes each and pass the same
+  `nes-py` smoke: 6 colors, idle sprite box (44,120)-(87,135), Right movement,
+  sub-tile scroll shifts and no black frames.
+- End-to-end runtime switching was proven with a temporary MMC3 game: its second
+  4 KB CHR bank was filled with `$FF` to make the switch visible, pressing B
+  selected CHR slot 2 bank 1, sprite pixels went from 196 to 0, and pressing B
+  again restored the original frame exactly (0 differing pixels). Frames had to
+  be copied because `nes-py` reuses its screen buffer between steps.
+- The temporary game latched `gr_pad_down(GR_BTN_B)` because a one-frame
+  `gr_pad_pressed()` edge is unreliable when the emulator advances faster than
+  the game loop; this is a test-harness detail, not an engine change.
+
+### Next steps
+
+- Support larger PRG/CHR layouts and place distinct tiles in different CHR banks
+  so runtime switching has gameplay-visible content.
+- Add Game Boy MBC bank sets and tile/nametable overlays.
+- Add emulator-based bank-switch checks to CI and validate on physical hardware.
+
+## 2026-11-24 - Larger CHR layouts and bank-aware placement
+
+### Progress
+
+- CHR ROM can now be 1, 2, 4 ... 16 banks of 8 KB on MMC1/MMC3; NROM remains
+  one bank. PRG stays fixed at 32 KB because the executing code lives in the
+  switchable MMC3 PRG windows.
+- Images can be pinned to a CHR bank and a local tile index. Different assets
+  may occupy the same tile index in different banks, so a mapper switch changes
+  visible tiles without changing nametable or OAM indices.
+
+### Changes
+
+- `ImageAsset` gained `chr_bank` and `chr_tile`; both are read from `[[image]]`
+  and from `[target.nes.image.<name>]` overrides.
+- `budget.py` now validates a fixed 32 KB PRG layout, power-of-two CHR counts up
+  to 16 (128 KB CHR), NROM's one-bank limit, per-asset bank/tile ranges and the
+  256-tile capacity of each 4 KB pattern table.
+- `_emit_nes_chr()` emits N 8 KB banks. Each bank mirrors one 4 KB table into
+  both pattern tables, honours explicit placements first, then auto-places
+  backgrounds from tile 0 and sprites from tile 4 per bank, and rejects
+  overlaps. The manifest records `chr_banks`, `chr_bank` and `chr_tile`.
+- Generated tilesets point at `nes_chr_data + (bank * 512 + tile) * 16`.
+  `nes_backend.c` masks the flat offset to an 8-bit tile index for OAM, and
+  `mapper.h` adds `GR_NES_CHR_BANK4()` to convert an 8 KB asset bank into the
+  4 KB register value used by MMC1/MMC3.
+- CHR data is emitted as `chr.s` directly into the cc65 `CHARS` segment rather
+  than a C array, because cc65 cannot compile arrays larger than 64 KB. C
+  tilesets still reference `_nes_chr_data` exactly as before.
+- `gr build --target nes` generates an enlarged cc65 `nes.cfg` when
+  `chr_banks > 1`, so the linker reserves the full CHR ROM.
+- `nes_crt0.s` writes a NES 2.0 header for more than 15 CHR banks: byte 7 gets
+  the format identifier, byte 9 the CHR size MSB, and byte 10 declares the 8 KB
+  PRG RAM that cc65 expects. Smaller layouts keep the original iNES header.
+- Staged external projects now refresh their generated directory wholesale so
+  stale `chr.c` files from an earlier layout cannot leak into a build.
+- `gr new`, the example project, API/banking/target/asset-pipeline docs and the
+  roadmap now describe the new layout and placement fields.
+
+### Verification
+
+- Python tests: 18/18. Meson C tests: 2/2. PC and GB builds, the PC/NES builds
+  and the headless PC smoke test all pass.
+- Stock NROM/MMC1/MMC3 ROMs remain 40,976 bytes and pass the same `nes-py`
+  smoke: six idle colors, a stable idle frame, sprite-region changes when Right
+  is held, and no all-black frames.
+- A temporary two-bank MMC3 project placed `kart` at bank 0/tile 4 and a
+  distinct `altkart` at bank 1/tile 4. The build produced a 49,168-byte ROM with
+  header byte 5 = `0x02`, two internally mirrored 8 KB banks, and 250 differing
+  bytes across the 16 sprite tiles in bank 0 versus bank 1.
+- `nes-py` bank-switch smoke: pressing B selected MMC3 CHR slot 2 bank
+  `GR_NES_CHR_BANK4(1)`, changed 264 pixels in the sprite region and reduced
+  the frame from six colors to three; a second B press restored the original
+  frame exactly (0 differing pixels).
+- A 16-bank MMC3 ROM built to 163,856 bytes with header
+  `4e45531a021043080000070000000000`; `nes-py` parsed it as mapper 4, 2 PRG /
+  16 CHR banks and rendered the same six-color idle frame and Right movement.
+
+### Next steps
+
+- Add a first-class two-bank example/game helper so projects can use alternate
+  tilesets without editing a temporary `main.c`; consider a higher-level
+  "swap tileset" API over raw `gr_bank_select()`.
+- Support larger PRG layouts with bank-aware linker placement, and validate
+  MMC1 two-bank switching with generated content as well.
+- Add Game Boy MBC bank sets and tile/nametable overlays, move emulator checks
+  into CI, and validate on physical hardware.
+
+## 2026-11-24 - Shipped two-bank CHR example
+
+### Progress
+
+- The shipped `test-kart` example now owns its second tileset and switches it
+  at runtime. Bank switching no longer depends on a patched temporary ROM.
+- Added a small reusable two-bank helper over `gr_bank_set`, so game code can
+  flip between two known banks without tracking raw bank numbers itself.
+
+### Changes
+
+- `core/include/gramma/bank.h` and `core/src/bank.c` add `gr_bank_switch`,
+  `gr_bank_switch_init()`, `gr_bank_switch_toggle()` and
+  `gr_bank_switch_reset()`.
+- `examples/test-kart/assets/altkart.png` is a distinct generated kart sheet.
+  `project.toml` places `kart` at bank 0/tile 4 and `altkart` at bank 1/tile 4;
+  the project now defaults to MMC3 with two 8 KB CHR banks. On PC and GB the
+  alternate asset is generated but the helper is inert.
+- New game-side `src/chr_switch.c`/`.h` latch B and toggle MMC3 CHR slot 2.
+  `main.c` includes the new asset, calls the helper and requests B in its
+  button mask. All project `src/*.c` files are now compiled for GB/NES, not
+  just `main.c`.
+- `gr check`, `gr build` and `gr run` accept `--mapper`, `--prg-banks` and
+  `--chr-banks` overrides. `generate()` accepts a loaded project and mapper
+  override so one codebase can produce layout variants without editing files.
+- `tests/test_bank.c` covers the two-bank helper; `tests/test_pipeline.py`
+  expects the example's two-bank MMC3 layout and fourth asset.
+
+### Verification
+
+- Python tests: 19/19. Meson C tests: 2/2. PC, GB and default NES builds pass;
+  the headless PC smoke test passes.
+- Default NES ROM is 49,168 bytes with header
+  `4e45531a020243000000000000000000`. After ~180 emulator frames it renders
+  six colors; holding B yields three colors and changes 264 pixels in the
+  sprite region. Frames are copied because `nes-py` reuses its screen buffer.
+
+### Next steps
+
+- Support larger PRG layouts with bank-aware linker placement.
+- Add Game Boy MBC bank sets, tile/nametable overlays, emulator CI and
+  physical-hardware notes.
+
+## 2026-11-24 - Larger PRG layouts and RAM-resident reads
+
+### Progress
+
+- MMC1/MMC3 PRG ROM can now be 2, 4, 8 ... 16 banks of 16 KB. Code, startup
+  data and vectors stay in the final two banks; earlier banks are data-only
+  segments emitted before them in the ROM file.
+- A RAM-resident reader can copy bytes out of a data-only PRG bank, so games
+  can use the extra ROM without risking a switch that removes their own code.
+
+### Changes
+
+- `budget.py` accepts power-of-two PRG bank counts 2..16 on MMC1/MMC3, keeps
+  NROM at two banks and caps CHR at 16 banks. `project.toml` overrides are
+  exposed through `gr build --prg-banks`.
+- `nes_crt0.s` emits PRG/CHR size MSBs in iNES bytes 8/9 and programs MMC1/MMC3
+  to select the final code banks at startup. Build-time mapper bytes live in
+  `RODATA`, because absolute ca65 symbols would be read by C as addresses.
+- `gr` generates a custom linker config for layouts above 32 KB: `PRG0..PRGn`
+  data segments, `ROMFIX` for all executable code and vectors, and a `RAMCODE`
+  segment copied from ROM to `$7400` before `main()`. The example supplies
+  `src/prg_data.s` with a sentinel byte in `PRG0`.
+- `core/src/nes_mapper.c` adds `gr_nes_mapper_init_hw_layout()` and
+  `gr_nes_mapper_runtime_init_layout()`; `nes_backend.c` reads the configured
+  bank count and implements `gr_nes_prg_read()` from RAM. A shadow `$2000`
+  value is used because the PPU control register is write-only.
+- `main.c` reads the sentinel when `GR_NES_RAMCODE` is defined and shifts the
+  scroll position by 8 pixels, making the data-bank probe visible in
+  `nes-py`. C tests cover MMC1/MMC3 startup bank selection and the helper.
+
+### Verification
+
+- Python tests: 19/19. Meson C tests: 2/2. PC/GB builds and the headless PC
+  smoke test still pass; the default two-bank NES ROM remains 49,168 bytes.
+- A four-bank MMC3 build is 81,936 bytes with header
+  `4e45531a040243000000000000000000`. `nes-py` renders the same six-color
+  frame and the B-button sprite switch changes 264 pixels.
+- An earlier attempt that left code in the switchable window produced a gray
+  frame; moving all executable segments to `ROMFIX` and keeping a PPUCTRL
+  shadow fixed it. This is recorded here so the layout constraint is explicit.
+
+### Next steps
+
+- Add Game Boy MBC bank sets and tile/nametable overlays with a shared vblank
+  queue; move emulator smokes into CI and add a physical-hardware checklist.

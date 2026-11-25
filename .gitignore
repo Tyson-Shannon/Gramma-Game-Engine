@@ -1,0 +1,10 @@
+build/
+.gr-projects/
+generated/
+.gr-cache/
+__pycache__/
+*.pyc
+*.gb
+*.o
+*.hi
+*.ppm
