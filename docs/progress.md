@@ -4,6 +4,41 @@ Short, chronological record of engine milestones. See
 [`roadmap.md`](roadmap.md) for the living plan and
 [`banking.md`](banking.md) for the bank abstraction design.
 
+## 2026-11-24 - NES emulator CI migrated to Gymnasium
+
+### Progress
+
+- Fixed the hosted CI failure in the NES emulator smoke step. The old
+  `nes-py` 8.x release depends on unmaintained Gym and fails with NumPy 2 while
+  parsing the ROM (`OverflowError: Python integer 1024 out of bounds for
+  uint8`). CI now installs the Gymnasium-based `nes-py>=9`.
+
+### Changes
+
+- `.github/workflows/ci.yml` switches `setup-python` to 3.13 (required by
+  `nes-py>=9`) and installs `pillow numpy pyboy 'nes-py>=9'`, with comments
+  explaining why older releases are rejected.
+- `tests/emulator_smoke.py` checks that `NESEnv` is a Gymnasium `Env` and exits
+  with an upgrade hint if a Gym-based `nes-py` is installed, instead of failing
+  deep inside ROM parsing. Its docstring records the new requirement.
+- `README.md` now names Python 3.13+, `nes-py>=9` and Gymnasium/NumPy 2
+  compatibility for the local emulator commands.
+
+### Verification
+
+- Locally, `nes-py 9.0.1` + `gymnasium 1.4.0` + `numpy 2.5.5` reports
+  `NES smoke OK: 6 idle colors, 264 sprite pixels` for
+  `build/test-kart-nes/game.nes`.
+- CI YAML parses cleanly (one job, 33 steps). A full CI-equivalent pass was
+  run against the same Gymnasium stack.
+- Physical hardware and SMS rendered-frame checks remain deferred; this change
+  only repairs the software CI gate.
+
+### Next steps
+
+1. Confirm the hosted NES emulator smoke step passes with the new dependency.
+2. Keep the Grain and hardware follow-ups from the entry below in progress.
+
 ## 2026-11-24 - Grain language toolchain shipped (Phase 3 track 1)
 
 ### Progress

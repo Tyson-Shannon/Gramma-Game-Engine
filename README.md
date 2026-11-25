@@ -18,9 +18,11 @@ for the plan, [docs/grain.md](docs/grain.md) for the language and
 ## Quick start
 
 Requirements: Python 3.11+, Pillow, Meson/Ninja, a C compiler and SDL2
-development files. `gr` bootstraps SDL2 headers, GBDK-2020, cc65 and the
-SDCC/devkitSMS toolchain into `~/.cache/gramma` if they are missing (Linux;
-no sudo needed). SMS/GG builds use SDCC 4.5.0 and a pinned devkitSMS commit.
+development files. The optional emulator checks need Python 3.13+ for
+`nes-py>=9` (Gymnasium/NumPy 2); CI uses Python 3.13. `gr` bootstraps SDL2
+headers, GBDK-2020, cc65 and the SDCC/devkitSMS toolchain into `~/.cache/gramma`
+if they are missing (Linux; no sudo needed). SMS/GG builds use SDCC 4.5.0 and a
+pinned devkitSMS commit.
 
 ```sh
 ./tools/gr/gr doctor                    # check toolchains
@@ -44,7 +46,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 Set `GRAMMA_SCREENSHOT=/tmp/frame.ppm` to dump a rendered frame on frame 2.
 
-With `pyboy` and `nes-py` installed, the same emulator checks CI runs can be
+With Python 3.13+, `pyboy` and `nes-py>=9` (the Gymnasium-based release,
+compatible with NumPy 2) installed, the same emulator checks CI runs can be
 reproduced locally:
 
 ```sh

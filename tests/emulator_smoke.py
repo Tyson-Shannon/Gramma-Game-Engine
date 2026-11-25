@@ -2,9 +2,11 @@
 
 These are intentionally not part of the unittest discovery: they need built
 ROMs and the optional ``pyboy``/``nes-py`` Python packages. CI runs them after
-the corresponding ``gr build`` steps; the same commands work locally. SMS/GG
-uses ``tests/sms_rom_check.py`` instead because no maintained headless SMS
-emulator is available in the CI image.
+the corresponding ``gr build`` steps; the same commands work locally. The NES
+check requires Python 3.13+ and ``nes-py>=9``, which uses Gymnasium and NumPy
+2; older Gym-based releases are unsupported. SMS/GG uses
+``tests/sms_rom_check.py`` instead because
+no maintained headless SMS emulator is available in the CI image.
 """
 
 from __future__ import annotations
@@ -57,6 +59,17 @@ def gb_smoke(rom: Path, expect_toggle: bool = True) -> None:
 def nes_smoke(rom: Path, warmup_frames: int = 180) -> None:
     """Verify that the NES ROM renders and B switches the sprite CHR bank."""
     from nes_py import NESEnv
+
+    try:
+        from gymnasium import Env
+    except ImportError as error:
+        raise SystemExit(
+            "NES smoke needs nes-py>=9 (Gymnasium); run "
+            "'pip install -U \"nes-py>=9\"'") from error
+    if not issubclass(NESEnv, Env):
+        raise SystemExit(
+            "installed nes-py uses unmaintained Gym; run "
+            "'pip install -U \"nes-py>=9\"' for Gymnasium/NumPy 2 support")
 
     env = NESEnv(str(rom))
     try:

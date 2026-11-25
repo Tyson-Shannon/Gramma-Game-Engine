@@ -12,7 +12,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          # nes-py 9 (Gymnasium, NumPy 2 compatible) requires Python >=3.13.
+          python-version: '3.13'
 
       - name: Install host dependencies
         run: |
@@ -20,7 +21,10 @@ jobs:
           sudo apt-get install -y libsdl2-dev meson ninja-build gcc
 
       - name: Python dependencies
-        run: python3 -m pip install pillow numpy pyboy nes-py
+        run: |
+          # nes-py 9 uses Gymnasium and works with NumPy 2; older Gym-based
+          # releases fail during ROM parsing on current Python/NumPy.
+          python3 -m pip install pillow numpy pyboy 'nes-py>=9'
 
       - name: Pipeline tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
