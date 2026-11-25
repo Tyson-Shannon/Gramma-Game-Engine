@@ -28,6 +28,8 @@ class AudioAsset:
     name: str
     file: Path
     sample_rate: int = 22050
+    dmc_rate: int = 15          # NES DMC rate index (0..15)
+    dmc_loop: bool = False
 
 
 @dataclass
@@ -106,6 +108,8 @@ def load_project(root: Path) -> Project:
             name=item["name"],
             file=root / item["file"],
             sample_rate=int(item.get("sample_rate", 22050)),
+            dmc_rate=int(item.get("dmc_rate", 15)),
+            dmc_loop=bool(item.get("dmc_loop", False)),
         ))
     for item in data.get("music", []):
         project.music.append(MusicAsset(

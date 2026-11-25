@@ -27,16 +27,29 @@ def _is_power_of_two(value: int) -> bool:
     return value > 0 and (value & (value - 1)) == 0
 
 
-def _nes_mapper_errors(project: Project) -> tuple[list[str], int]:
-    errors: list[str] = []
+NES_MIRRORINGS = {
+    "horizontal": 0,
+    "vertical": 1,
+    "four-screen": 8,
+}
+
+
+def nes_mapper_config(project: Project) -> dict:
+    """Return the validated NES cart layout used by `gr check`/`gr build`.
+
+    `mirror_bit` is the iNES header mirroring field: 0 horizontal, 1 vertical,
+    8 four-screen. Four-screen needs a board with four physical nametables, so
+    it is only allowed on NROM; MMC1/MMC3 boards use their mirroring registers.
+    """
     cfg = project.mapper.get("nes", {})
+    errors: list[str] = []
     mapper_id = str(cfg.get("id", "nrom")).lower()
     if mapper_id not in NES_MAPPERS:
         supported = ", ".join(sorted(NES_MAPPERS))
         errors.append(
             f"mapper: unknown NES mapper '{mapper_id}' "
             f"(supported: {supported})")
-        return errors, 1
+        mapper_id = "nrom"
 
     banks = {"prg_banks": MIN_PRG_BANKS, "chr_banks": 1}
     for key in ("prg_banks", "chr_banks"):
@@ -66,7 +79,32 @@ def _nes_mapper_errors(project: Project) -> tuple[list[str], int]:
                 f"{MAX_CHR_BANKS} (128 KB CHR)")
         if banks["chr_banks"] > 1 and mapper_id == "nrom":
             errors.append("mapper: nrom supports only one 8 KB CHR bank")
-    return errors, banks["chr_banks"]
+
+    mirroring = str(cfg.get("mirroring", "vertical")).lower()
+    if mirroring not in NES_MIRRORINGS:
+        errors.append(
+            f"mapper: unknown NES mirroring '{mirroring}' "
+            f"(supported: {', '.join(sorted(NES_MIRRORINGS))})")
+        mirroring = "vertical"
+    if mirroring == "four-screen" and mapper_id != "nrom":
+        errors.append(
+            "mapper: four-screen mirroring requires a four-nametable NROM "
+            "board; MMC1/MMC3 only support vertical/horizontal")
+
+    return {
+        "errors": errors,
+        "id": mapper_id,
+        "id_value": NES_MAPPERS[mapper_id],
+        "prg_banks": banks["prg_banks"],
+        "chr_banks": banks["chr_banks"],
+        "mirroring": mirroring,
+        "mirror_bit": NES_MIRRORINGS[mirroring],
+    }
+
+
+def _nes_mapper_errors(project: Project) -> tuple[list[str], int]:
+    cfg = nes_mapper_config(project)
+    return cfg["errors"], cfg["chr_banks"]
 
 
 def gb_mapper_config(project: Project) -> dict:
@@ -198,6 +236,14 @@ def check_budget_detailed(project: Project, target: str,
         if key in limits:
             limits[key] = int(value)
 
+    if target == "nes":
+        for message in nes_mapper_config(project)["errors"]:
+            add("budget.mapper", "mapper", message)
+        for asset in project.audio:
+            if not 0 <= asset.dmc_rate <= 15:
+                add("budget.dmc_rate", "audio",
+                    f"{asset.name}: dmc_rate {asset.dmc_rate} is outside 0..15",
+                    asset.name)
     if target == "gb":
         for message in gb_mapper_config(project)["errors"]:
             add("budget.mapper", "mapper", message)
@@ -255,9 +301,8 @@ def check_budget_detailed(project: Project, target: str,
             f"of {rom_limit} bytes (code not yet counted)")
 
     if target == "nes":
-        mapper_errors, chr_banks = _nes_mapper_errors(project)
-        for message in mapper_errors:
-            add("budget.mapper", "mapper", message)
+        mapper = nes_mapper_config(project)
+        chr_banks = mapper["chr_banks"]
         if chr_banks > 0:
             used: dict[int, int] = {}
             for asset in manifest["assets"]:

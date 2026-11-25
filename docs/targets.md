@@ -59,17 +59,28 @@ vram_tiles = 384
 - Asset banks are 8 KB but MMC1/MMC3 bank registers select 4 KB tables.
   `GR_NES_CHR_BANK4(n)` converts an asset bank to the register bank to pass to
   `gr_bank_select()`; the verified MMC3 sprite slot is 2.
-- One nametable is uploaded at `$2000`; the attribute table uses a single
-  background palette slot. Coarse scrolling rewrites nametable column 31 as the
-  map scroll advances. A custom NMI (`targets/nes/src/nes_crt0.s`) writes the
-  low three scroll bits from `$7EE0`/`$7EE1` to `$2005` every vblank, so fine
-  scrolling works despite cc65 2.19's stock NMI resetting `$2005`.
+- Backgrounds render from the selected `$2000`-`$23BF` nametable:
+  `gr_bg_set_nametable()` chooses 0..3 and the build's mirroring mode
+  (`[mapper.nes] mirroring = horizontal | vertical | four-screen`, or
+  `--mirroring`) decides which physical tables those addresses reach. Four-screen
+  is allowed only on NROM; MMC1/MMC3 use their mirroring registers. Without a
+  palette map, the attribute table uses one background palette slot; with
+  `gr_bg_set_palette_map()`, the backend packs four tiles' palette indices into
+  each attribute byte so one nametable can mix palettes 0..3. Coarse scrolling
+  rewrites nametable column 31 as the map scroll advances. A custom NMI
+  (`targets/nes/src/nes_crt0.s`) writes the low three scroll bits from
+  `$7EE0`/`$7EE1` to `$2005` and restores the `$2000` shadow so the selected
+  nametable survives every vblank, despite cc65 2.19's stock NMI resetting
+  `$2005`.
 - Sprites are 8x8 OAM entries; a 2x2 actor frame uses four entries. Up to 64
   hardware sprites and 8 per scanline apply. OAM is staged at `$7F00` and sent
   with a hardware DMA write, avoiding slow `$2004` loops in the 2.19 NMI.
 - RGB555 tile palettes are converted to the nearest 2C02 color and cached per
-  palette slot. Music uses pulse/triangle/noise; PCM SFX are approximated with
-  a tone because DMC samples are not wired up.
+  palette slot. Music uses pulse/triangle/noise. A WAV SFX also carries a
+  generated 4-bit DMC sample (`gr_sfx_def.dmc`): `gr_sfx_play()` starts it via
+  `$4010`-`$4013` with the configured rate index and loop flag, from a
+  64-byte-aligned `DMC` ROM segment. SFX without a DMC twin still fall back to a
+  pulse tone. PC plays portable PCM directly; GB/SMS keep their tone fallback.
 - Two eight-button controllers are read serially. X/Y/L/R are unavailable on
   this target. The example has been verified in `nes-py`, including sub-tile
   background shifts; physical hardware is untested.

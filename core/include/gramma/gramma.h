@@ -36,6 +36,16 @@ gr_result gr_palette_load(uint8_t slot, const gr_color *colors, uint8_t count);
 void gr_bg_init(gr_bg *bg, const gr_tileset *tileset, const gr_map *map,
                 uint8_t pal_slot);
 void gr_bg_set_scroll(gr_bg *bg, int16_t x, int16_t y);
+/* Select one of four PPU nametables (NES; ignored elsewhere). */
+void gr_bg_set_nametable(gr_bg *bg, uint8_t nametable);
+/* Per-tile background palette indices (0..3), or NULL for one flat palette.
+ * The array must have at least map->width * map->height bytes and stay valid
+ * while the background is drawn. */
+void gr_bg_set_palette_map(gr_bg *bg, const uint8_t *palette_map);
+/* Pack the four 16x16 regions inside one attribute block (ax, ay) into the
+ * 2-bits-per-region byte used by tile hardware. Portable so it can be tested
+ * on the host and shared by backends. */
+uint8_t gr_bg_attribute(const gr_bg *bg, uint8_t ax, uint8_t ay);
 void gr_sprite_show(gr_sprite *s, uint8_t pal_slot, int16_t x, int16_t y);
 void gr_sprite_hide(gr_sprite *s);
 void gr_sprite_set_frame(gr_sprite *s, uint8_t frame);

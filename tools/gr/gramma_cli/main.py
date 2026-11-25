@@ -20,7 +20,8 @@ from gramma_pipeline import (  # noqa: E402
     generate_api_reference, load_project)
 from gramma_pipeline.grain import GrainError, check_grain, transpile  # noqa: E402
 from gramma_pipeline.budget import (  # noqa: E402
-    GB_MAPPERS, NES_MAPPERS, gb_mapper_config, sms_mapper_config)
+    GB_MAPPERS, NES_MAPPERS, NES_MIRRORINGS, gb_mapper_config,
+    nes_mapper_config, sms_mapper_config)
 from gramma_pipeline.targets import TARGET_STATUS  # noqa: E402
 from .cc65 import cc65_status, ensure_cc65  # noqa: E402
 from .gbdk import ensure_gbdk, gbdk_status  # noqa: E402
@@ -81,6 +82,7 @@ def _mapper_override(args: argparse.Namespace) -> dict:
         ("mapper", "nes.id"),
         ("prg_banks", "nes.prg_banks"),
         ("chr_banks", "nes.chr_banks"),
+        ("mirroring", "nes.mirroring"),
         ("gb_mapper", "gb.id"),
         ("gb_rom_banks", "gb.rom_banks"),
         ("gb_ram_banks", "gb.ram_banks"),
@@ -170,14 +172,21 @@ def _nes_linker_config(share_dir: Path, builddir: Path,
     code banks, so their file order matches their mapper bank numbers.
     """
     stock = share_dir / "cfg" / "nes.cfg"
-    if prg_banks == 2 and chr_banks == 1:
-        return stock
 
     if prg_banks == 2:
+        updated = stock.read_text(encoding="utf-8")
+        if chr_banks != 1:
+            updated, count = re.subn(
+                r"(ROM2:\s+file = %O, start = \$0000, size = )\$2000",
+                lambda m: m.group(1) + f"${chr_banks * 0x2000:04X}",
+                updated)
+            if count != 1:
+                return None
+        # Generated DMC samples are 64-byte aligned in their own ROM segment.
         updated, count = re.subn(
-            r"(ROM2:\s+file = %O, start = \$0000, size = )\$2000",
-            lambda m: m.group(1) + f"${chr_banks * 0x2000:04X}",
-            stock.read_text(encoding="utf-8"))
+            r"(RODATA:\s+load = ROM0,\s+type = ro,[^\n]*\n)",
+            r"\1    DMC:      load = ROM0,            type = ro, define = yes, align = 64;\n",
+            updated)
         if count != 1:
             return None
         path = builddir / "nes.cfg"
@@ -213,12 +222,16 @@ def _nes_linker_config(share_dir: Path, builddir: Path,
         "    ONCE:     load = ROMFIX,          type = ro,  optional = yes;",
         "    CODE:     load = ROMFIX,          type = ro,  define   = yes;",
         "    RODATA:   load = ROM0,            type = ro,  define   = yes;",
+        "    DMC:      load = ROM0,            type = ro,  define   = yes, align = 64;",
     ]
     if prg_banks > 2:
         lines.append(
             "    CODE2:    load = ROM0,            type = ro,  define   = yes;")
     lines += [
-        "    DATA:     load = ROMFIX, run = RAM, type = rw, define  = yes;",
+        # DATA's load image is only read by copydata() during startup, after
+        # mapper_init() has mapped ROM0 at $8000. Keeping it in ROMFIX would
+        # consume scarce fixed-bank bytes for every initialized global.
+        "    DATA:     load = ROM0,   run = RAM, type = rw, define  = yes;",
         "    VECTORS:  load = ROMV,            type = rw;",
         "    CHARS:    load = ROM2,            type = rw;",
         "    RAMCODE:  load = ROM0, run = RAMCODE_RAM, type = rw, define = yes;",
@@ -307,6 +320,11 @@ def _build_nes(root: Path, project, builddir: Path) -> tuple[int, Path | None]:
     env["CC65_HOME"] = str(share_dir)
 
     sources = sorted((REPO / "core" / "src").glob("*.c"))
+    # Mapper implementations for other consoles are dead code on NES. Dropping
+    # them here keeps fixed code inside the 16 KB ROMFIX bank on larger PRG
+    # layouts; the portable API never references these symbols directly.
+    for unused in ("gb_mapper.c", "sms_mapper.c"):
+        sources = [source for source in sources if source.name != unused]
     sources += [REPO / "targets" / "nes" / "src" / "nes_backend.c"]
     sources += sorted((root / "src").glob("*.c"))
     sources += sorted((root / "src").glob("*.s"))
@@ -315,11 +333,12 @@ def _build_nes(root: Path, project, builddir: Path) -> tuple[int, Path | None]:
     sources += sorted(generated.glob("*.s"))
     sources += sorted(generated.glob("*.c"))
     # Mapper config is validated by check_budget() before we get here.
-    cfg = project.mapper.get("nes", {}) if project is not None else {}
-    mapper_name = str(cfg.get("id", "nrom")).lower()
-    mapper_id = NES_MAPPERS[mapper_name]
-    prg_banks = int(cfg.get("prg_banks", 2))
-    chr_banks = int(cfg.get("chr_banks", 1))
+    cfg = nes_mapper_config(project)
+    mapper_name = cfg["id"]
+    mapper_id = cfg["id_value"]
+    prg_banks = cfg["prg_banks"]
+    chr_banks = cfg["chr_banks"]
+    mirror_bit = cfg["mirror_bit"]
     code2_sources: list[Path] = []
     if prg_banks > 2:
         # Keep ROMFIX under 16 KB. Both the overlay queue and the target system
@@ -328,7 +347,8 @@ def _build_nes(root: Path, project, builddir: Path) -> tuple[int, Path | None]:
         code2_sources = [REPO / "core" / "src" / "overlay.c",
                          REPO / "core" / "src" / "target_system.c"]
         sources = [source for source in sources if source not in code2_sources]
-    print(f"  NES mapper: {mapper_name} (PRG banks {prg_banks}, CHR banks {chr_banks})")
+    print(f"  NES mapper: {mapper_name} (PRG banks {prg_banks}, CHR banks {chr_banks}, "
+          f"mirroring {cfg['mirroring']})")
 
     linker_cfg = _nes_linker_config(share_dir, builddir, prg_banks, chr_banks)
     if linker_cfg is None:
@@ -345,7 +365,8 @@ def _build_nes(root: Path, project, builddir: Path) -> tuple[int, Path | None]:
                "-DGRAMMA_TARGET_NES",
                "--asm-define", f"GR_NES_MAPPER={mapper_id}",
                "--asm-define", f"GR_NES_PRG_BANKS={prg_banks}",
-               "--asm-define", f"GR_NES_CHR_BANKS={chr_banks}"]
+               "--asm-define", f"GR_NES_CHR_BANKS={chr_banks}",
+               "--asm-define", f"GR_NES_MIRROR={mirror_bit}"]
     if prg_banks > 2:
         command += ["-DGR_NES_RAMCODE",
                     "--asm-define", "GR_NES_RAMCODE=1"]
@@ -644,6 +665,8 @@ def _add_mapper_args(parser: argparse.ArgumentParser) -> None:
                         help="override the 16 KB PRG bank count")
     parser.add_argument("--chr-banks", type=int,
                         help="override the 8 KB CHR bank count")
+    parser.add_argument("--mirroring", choices=sorted(NES_MIRRORINGS),
+                        help="override [mapper.nes].mirroring for this build/check")
     parser.add_argument("--gb-mapper", choices=sorted(GB_MAPPERS),
                         help="override [mapper.gb].id for this build/check")
     parser.add_argument("--gb-rom-banks", type=int,

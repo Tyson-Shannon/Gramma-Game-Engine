@@ -90,6 +90,23 @@ Record: console model, flash cart, ROM hash, whether the sentinel returned
 Record: console model/revision, flash cart and mapper support, PRG/CHR bank
 counts, ROM hash, and observations for each numbered check.
 
+## NES mirroring, palettes and DMC checklist
+
+1. Build NROM with `--mirroring four-screen`, verify header byte 6 is `0x0a`,
+   and place distinct content in all four nametables; each must render without
+   bleeding into another. Horizontal (`0x42` on MMC3) and vertical (`0x43` on
+   MMC3) must show the expected two-table mirroring.
+2. With a split `gr_bg.palette_map`, confirm a single nametable shows all four
+   background palette regions at 16x16-tile boundaries and that coarse
+   scrolling refreshes attributes without color tearing.
+3. Trigger a WAV SFX with `gr_sfx_def.dmc` set. Confirm audible sample playback
+   at the configured rate, that the loop bit repeats only when requested, and
+   that music/tones continue afterward.
+
+This checklist is **deferred**: none of these three checks has run on hardware,
+and the current emulator smoke does not cover the rendered palette/nametable or
+audible DMC results. Record results in the table below only after a real pass.
+
 ## SMS / GG checklist
 
 1. Load the four-bank `game.sms`. Confirm the SEGA header is accepted by the

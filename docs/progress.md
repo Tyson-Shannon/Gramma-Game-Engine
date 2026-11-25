@@ -4,6 +4,83 @@ Short, chronological record of engine milestones. See
 [`roadmap.md`](roadmap.md) for the living plan and
 [`banking.md`](banking.md) for the bank abstraction design.
 
+## 2026-11-24 - NES depth: mirroring, nametables, split palettes and DMC
+
+### Progress
+
+- Completed the remaining NES-specific depth items without changing the shape
+  of the portable C API or adding a console-side interpreter. Mirroring,
+  nametable selection, per-tile background palette maps and DMC sample playback
+  are all configured at build time or through opt-in struct fields, and every
+  asset representation is still emitted ahead of time as C/assembly constants.
+- Kept all target headers opt-in: `gramma.h` gains plain C helpers, while mapper
+  and system headers remain separate includes.
+
+### Changes
+
+- `pipeline/gramma_pipeline/budget.py`: `nes_mapper_config()` now reports
+  `mirroring` (`horizontal`, `vertical` or `four-screen`), its iNES header bit
+  and an error when four-screen is requested on MMC1/MMC3. Invalid modes fall
+  back safely to vertical and produce a structured `budget.mapper` violation.
+- `tools/gr/gramma_cli/main.py`: added `--mirroring` to `check`/`build`/`run`,
+  passed `GR_NES_MIRROR` to ca65, and generated a linker config for every NES
+  layout so DMC samples get a 64-byte-aligned `DMC` segment. NES builds now
+  exclude the unused GB/SMS mapper sources, and multi-bank layouts put `DATA`'s
+  startup load image in `ROM0` instead of the fixed bank; together these keep
+  `CODE` inside `ROMFIX` on four-bank MMC3 ROMs.
+- `core/include/gramma/types.h`, `core/include/gramma/gramma.h` and
+  `core/src/scene.c`: `gr_bg_set_nametable()` picks logical nametable 0..3,
+  `gr_bg_set_palette_map()` supplies one palette index per tile, and the
+  portable `gr_bg_attribute()` packs a 16x16-tile attribute byte for the NES
+  backend.
+- `targets/nes/src/nes_crt0.s`: iNES header mirror bits, MMC1/MMC3 startup
+  mirroring registers and a full `$2000` shadow so the NMI restores both
+  nametable bits on every vblank.
+- `targets/nes/src/nes_backend.c`: writes the selected nametable's tile and
+  attribute tables and starts `gr_sfx_def.dmc` through `$4010`-`$4013`, with
+  the existing pulse-tone fallback when no DMC sample is present.
+- `pipeline/gramma_pipeline/audio.py` and `generate.py`: WAV assets emit a
+  4-bit DMC twin only for `nes`, alongside `dmc_bytes`/`dmc_rate` in the
+  manifest and DMC bytes in the NES ROM total. An out-of-range `dmc_rate`
+  produces `budget.dmc_rate` instead of crashing generation. This also fixed a
+  link regression where non-NES targets referenced an undefined DMC symbol.
+- Docs: `api.md`, `targets.md`, `banking.md`, `asset-pipeline.md`, `roadmap.md`,
+  `hardware-validation.md`, `docs/generated/api-reference.md` and this entry.
+
+### Verification
+
+- New `tests/test_nes_depth.py` (16 tests) covers mirroring bits, four-screen
+  validation, CLI overrides, DMC encoding/emission, cross-target portability
+  and static runtime markers. New `tests/test_nes_depth.c` covers the portable
+  nametable/attribute helpers. Python suite: 141/141 pass; Meson suite: 7/7
+  pass.
+- Local CI-equivalent rerun after the layout fix: `ALL CI-EQUIVALENT CHECKS
+  PASSED`, including `gr docs --check`, the Node LSP adapter test, all four
+  target builds, PC/GB/NES emulator smokes and the four-bank MMC3 ROM.
+- Header bytes rechecked after the build-driver change: default MMC3 `0x43`,
+  MMC3 with `--mirroring horizontal` `0x42`, NROM four-screen `0x0a`; MMC3
+  four-screen is rejected with the four-screen/board diagnostic (structured
+  code `budget.mapper`). The
+  default and four-bank NES ROMs both pass the `nes-py` smoke (`6 idle colors,
+  264 sprite pixels`).
+- Hosted CI has **not** been rerun since these NES-depth changes; do not treat
+  the earlier user-reported green as covering them. Physical hardware remains
+  deferred. The emulator smoke verifies boot, sprites and scroll, not a visual
+  split-palette/nametable demonstration or audible DMC playback; SMS/GG
+  operation remains informal and user-observed only.
+
+### Next steps
+
+1. Add a small NES depth scene that visibly switches nametables, mixes all four
+   background palettes and loops a DMC sample, then extend the emulator smoke
+   to check those frames/APU state.
+2. Run the new checklist in [`hardware-validation.md`](hardware-validation.md)
+   when a flash cart is available; keep the results log deferred until then.
+3. Ask the user to rerun hosted CI now that the four-bank overflow is fixed,
+   and record that result only when actually reported.
+4. Continue depth-first with the asset/music pipeline, then Grain language and
+   tooling, then additional backends.
+
 ## 2026-11-24 - Host-side backend contract v1 for external frontends
 
 ### Progress
@@ -55,8 +132,8 @@ Short, chronological record of engine milestones. See
   `ALL CI-EQUIVALENT CHECKS PASSED`, including Meson C tests, PC/GB/NES emulator
   smokes, Grain demo builds for all four targets, SMS/GG structural checks and
   the four-bank NES ROM. `gr docs --check` still reports the generated reference
-  up to date. Hosted CI was not rerun here; the earlier green remains
-  user-reported.
+  up to date. Hosted CI was rerun after these changes and reported green by the
+  user; that hosted result is recorded as user-reported, not locally observed.
 - The generated API reference is unaffected because no public C header changed;
   GUI code was not added and no hardware/SMS validation claim is made here.
 

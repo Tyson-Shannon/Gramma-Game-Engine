@@ -16,12 +16,14 @@
 #include <string.h>
 
 #define NES_CTRL          0x90u  /* NMI on, bg $0000, sprites $1000, 8x8 */
+#define NES_CTRL_BASE     0x90u  /* plus the two nametable bits */
 #define NES_NAMETABLE     0x2000u
-#define NES_ATTR_TABLE    0x23C0u
+#define NES_ATTR_OFFSET   0x03C0u
 #define NES_PALETTE       0x3F00u
 #define NES_VBLANK_FLAG   0x0070u
 #define NES_SCROLL_X      0x7EE0u  /* written by nes_crt0.s during NMI */
 #define NES_SCROLL_Y      0x7EE1u
+#define NES_CTRL_SHADOW   0x7EE2u  /* full $2000 value, also written by NMI */
 #define NES_MAX_SPRITES   64u
 /* Overlay patches share the custom NMI's ppubuf flush with scrolling and the
  * palette. Cap them so a banked scene change cannot consume the whole vblank. */
@@ -47,11 +49,20 @@ static const gr_bg *g_pending_bg;
 static bool g_bg_upload_pending;
 static uint8_t g_bg_column;
 static uint8_t g_bg_pal_slot;
+static uint8_t g_bg_nametable;
+static const uint8_t *g_bg_palette_map;
 static uint8_t g_overlay_writes;
 static volatile uint8_t *const g_scroll_x =
     (volatile uint8_t *)NES_SCROLL_X;
 static volatile uint8_t *const g_scroll_y =
     (volatile uint8_t *)NES_SCROLL_Y;
+static volatile uint8_t *const g_ctrl_shadow =
+    (volatile uint8_t *)NES_CTRL_SHADOW;
+
+static uint16_t nes_nametable_base(uint8_t nametable)
+{
+    return (uint16_t)(NES_NAMETABLE + (uint16_t)(nametable & 3u) * 0x0400u);
+}
 
 static const gr_tileset *g_sprite_tileset;
 static uint8_t g_sprite_tile_base;
@@ -120,36 +131,51 @@ static void nes_ppu_write(uint16_t address, uint8_t value)
     __asm__("jsr ppubuf_put");
 }
 
+/* Attribute bytes hold one 2-bit palette index per 16x16 tile region. When a
+ * background supplies a per-tile palette map, pack four regions into each byte
+ * so one nametable can use all four background palettes at once. */
+static void nes_write_attributes(const gr_bg *bg, uint16_t attr_base)
+{
+    uint8_t ax, ay;
+
+    for (ay = 0u; ay < 8u; ++ay) {
+        for (ax = 0u; ax < 8u; ++ax) {
+            nes_ppu_write((uint16_t)(attr_base + (uint16_t)ay * 8u + ax),
+                          gr_bg_attribute(bg, ax, ay));
+        }
+    }
+}
+
 static void nes_upload_background(const gr_bg *bg)
 {
     const gr_map *map;
+    uint16_t nt_base;
     uint8_t x, y;
-    uint8_t attr;
-    uint8_t i;
 
     if (bg == NULL || bg->tileset == NULL || bg->map == NULL ||
         bg->map->tiles == NULL) {
         return;
     }
     map = bg->map;
+    nt_base = nes_nametable_base(bg->nametable);
     for (y = 0; y < 30u; ++y) {
         uint16_t my = (uint16_t)(y % map->height);
         for (x = 0; x < 32u; ++x) {
             uint16_t mx = (uint16_t)(x % map->width);
             uint16_t index = (uint16_t)(my * map->width + mx);
-            nes_ppu_write((uint16_t)(NES_NAMETABLE + (uint16_t)y * 32u + x),
+            nes_ppu_write((uint16_t)(nt_base + (uint16_t)y * 32u + x),
                           (uint8_t)map->tiles[index]);
         }
     }
-
-    attr = (uint8_t)((bg->pal_slot & 3u) * 0x55u);
-    for (i = 0; i < 64u; ++i) {
-        nes_ppu_write((uint16_t)(NES_ATTR_TABLE + i), attr);
-    }
+    nes_write_attributes(bg, (uint16_t)(nt_base + NES_ATTR_OFFSET));
     g_bkg_tileset = bg->tileset;
     g_bkg_source = bg->map;
     g_bg_pal_slot = bg->pal_slot;
+    g_bg_nametable = (uint8_t)(bg->nametable & 3u);
+    g_bg_palette_map = bg->palette_map;
     g_bg_column = 0xffu;
+    g_ppu_ctrl = (uint8_t)(NES_CTRL_BASE | g_bg_nametable);
+    *g_ctrl_shadow = g_ppu_ctrl;
 }
 
 /* Gramma's custom NMI writes fine scroll to $2005 every vblank. Coarse
@@ -158,12 +184,14 @@ static void nes_upload_background(const gr_bg *bg)
 static void nes_update_bg_scroll(const gr_bg *bg)
 {
     const gr_map *map;
+    uint16_t nt_base;
     uint8_t target, src_x, y;
 
     if (bg == NULL || bg->map == NULL || bg->map->tiles == NULL) {
         return;
     }
     map = bg->map;
+    nt_base = nes_nametable_base(bg->nametable);
     *g_scroll_x = (uint8_t)((uint16_t)(bg->scroll_x >= 0 ? bg->scroll_x : 0) &
                             0x07u);
     *g_scroll_y = (uint8_t)((uint16_t)(bg->scroll_y >= 0 ? bg->scroll_y : 0) &
@@ -173,13 +201,18 @@ static void nes_update_bg_scroll(const gr_bg *bg)
         g_bg_column = target;
     }
     while (g_bg_column != target) {
+        uint8_t old_block = (uint8_t)(g_bg_column >> 2);
         g_bg_column = (uint8_t)(g_bg_column + 1u);
         src_x = (uint8_t)((g_bg_column + 31u) % map->width);
         for (y = 0; y < 30u; ++y) {
             uint8_t src_y = (uint8_t)(y % map->height);
             uint16_t index = (uint16_t)(src_y * map->width + src_x);
-            nes_ppu_write((uint16_t)(NES_NAMETABLE + (uint16_t)y * 32u + 31u),
+            nes_ppu_write((uint16_t)(nt_base + (uint16_t)y * 32u + 31u),
                           (uint8_t)map->tiles[index]);
+        }
+        /* A split palette map needs fresh attribute bytes every four tiles. */
+        if (bg->palette_map != NULL && (g_bg_column >> 2) != old_block) {
+            nes_write_attributes(bg, (uint16_t)(nt_base + NES_ATTR_OFFSET));
         }
     }
 }
@@ -362,6 +395,26 @@ static void nes_start_tone(uint8_t channel, uint16_t freq, uint8_t volume)
         APU.noise.period = (uint8_t)(freq & 0x0fu);
         APU.noise.len = 0xf8u;
     }
+}
+
+/* Start a delta-modulated sample. DMC data lives in a 64-byte-aligned ROM
+ * segment, so the hardware only needs the CPU address shifted down six bits.
+ * $4015 bit 3 is toggled first to abort any sample still playing. */
+static void nes_dmc_play(const gr_dmc *dmc)
+{
+    uint16_t address;
+
+    if (dmc == NULL || dmc->data == NULL || dmc->length < 16u) {
+        return;
+    }
+    address = (uint16_t)(uintptr_t)dmc->data;
+    APU.status = 0x07u;         /* keep tones, stop DMC */
+    APU.status = 0x0fu;         /* re-enable DMC for the new sample */
+    APU.delta_mod.control = (uint8_t)((dmc->rate & 0x0fu) |
+                                      (dmc->loop ? 0x10u : 0u) | 0x20u);
+    APU.delta_mod.output = 64u;
+    APU.delta_mod.address = (uint8_t)(address >> 6);
+    APU.delta_mod.length = (uint8_t)((dmc->length >> 4) - 1u);
 }
 
 static void nes_play_note(const gr_note *note)
@@ -553,7 +606,9 @@ static void nes_frame_draw(const gr_bg *bg, gr_actor *const *actors,
     if (bg != NULL && bg->tileset != NULL && bg->map != NULL) {
         g_current_bg = bg;
         if (bg->tileset != g_bkg_tileset || bg->map != g_bkg_source ||
-            bg->pal_slot != g_bg_pal_slot) {
+            bg->pal_slot != g_bg_pal_slot ||
+            (uint8_t)(bg->nametable & 3u) != g_bg_nametable ||
+            bg->palette_map != g_bg_palette_map) {
             g_pending_bg = bg;
             g_bg_upload_pending = true;
         }
@@ -646,10 +701,15 @@ static void nes_sfx_play(uint16_t id, uint8_t channel)
         return;
     }
     def = g_cfg->sfx[id];
+    if (def->dmc != NULL) {
+        /* PCM WAV assets carry a 4-bit DMC twin generated by the pipeline. */
+        g_sfx_frames = 0u;
+        nes_dmc_play(def->dmc);
+        return;
+    }
     freq = def->freq_hz;
     if (freq == 0u) {
-        /* The sample SFX is PCM; NROM has no DMC sample in this first pass. */
-        freq = 220u;
+        freq = 220u;            /* PCM-only asset without a DMC twin */
     }
     nes_start_tone(1u, freq, def->volume);
     g_sfx_frames = (uint16_t)(def->duration_ms / 17u);
@@ -686,6 +746,8 @@ static gr_result nes_init(const gr_config *cfg)
     g_bg_upload_pending = false;
     g_bg_column = 0xffu;
     g_bg_pal_slot = 0xffu;
+    g_bg_nametable = 0xffu;
+    g_bg_palette_map = NULL;
     g_sprite_tileset = NULL;
     g_sprite_tile_base = 0u;
     g_song = NULL;
@@ -710,6 +772,7 @@ static gr_result nes_init(const gr_config *cfg)
     nes_render_disable();
     APU.status = 0x0fu;
     APU.fcontrol = 0u;
+    *g_ctrl_shadow = g_ppu_ctrl;
     PPU.control = g_ppu_ctrl;
     nes_render_enable();
     return GR_OK;
@@ -812,10 +875,13 @@ static gr_result nes_overlay_nametable(uint8_t x, uint8_t y, uint8_t w,
                                        uint8_t h, const uint8_t *tiles)
 {
     uint8_t row, col;
+    uint16_t nt_base;
 
     if (x + w > 32u || y + h > 30u) {
         return GR_ERR_INVALID_ARG;
     }
+    nt_base = nes_nametable_base(g_bg_nametable == 0xffu ? 0u
+                                                         : g_bg_nametable);
     if ((uint16_t)g_overlay_writes + (uint16_t)w * (uint16_t)h >
         NES_OVERLAY_VBLANK_BUDGET) {
         return GR_ERR_NO_MEMORY;
@@ -825,7 +891,7 @@ static gr_result nes_overlay_nametable(uint8_t x, uint8_t y, uint8_t w,
     for (row = 0u; row < h; ++row) {
         for (col = 0u; col < w; ++col) {
             uint16_t index = (uint16_t)row * (uint16_t)w + (uint16_t)col;
-            nes_ppu_write((uint16_t)(NES_NAMETABLE +
+            nes_ppu_write((uint16_t)(nt_base +
                 (uint16_t)(y + row) * 32u + (uint16_t)(x + col)),
                 tiles[index]);
         }

@@ -252,15 +252,23 @@ def generate(root: Path, target: str, project=None,
         options = audio_overrides.get(asset.name, {})
         if options.get("skip", False):
             continue
-        if options.get("sample_rate"):
-            asset = replace(asset, sample_rate=int(options["sample_rate"]))
-        result = process_audio(asset)
+        for key in ("sample_rate", "dmc_rate", "dmc_loop"):
+            if key in options:
+                value = (bool(options[key]) if key == "dmc_loop"
+                         else int(options[key]))
+                asset = replace(asset, **{key: value})
+        result = process_audio(asset, include_dmc=(target == "nes"))
         filename = _ident(asset.name) + ".c"
         text = result.source_text
         if target == "gb":
             text = "#pragma bank 1\n\n" + text
         (output / filename).write_text(text, encoding="utf-8")
         sources.append(filename)
+        if target == "nes" and result.dmc_asm_text:
+            # ca65 emits the 64-byte-aligned sample in the fixed DMC segment.
+            asm_name = _ident(asset.name) + "_dmc.s"
+            (output / asm_name).write_text(result.dmc_asm_text, encoding="utf-8")
+            sources.append(asm_name)
         manifest["assets"].append({
             "name": asset.name,
             "kind": "audio",
@@ -272,8 +280,11 @@ def generate(root: Path, target: str, project=None,
             "source": result.source,
             "sample_rate": result.sample_rate,
             "duration_ms": result.duration_ms,
+            "dmc_bytes": result.dmc_bytes if target == "nes" else 0,
+            "dmc_rate": result.dmc_rate,
         })
-        manifest["totals"]["rom_bytes"] += result.rom_bytes
+        manifest["totals"]["rom_bytes"] += (
+            result.rom_bytes + (result.dmc_bytes if target == "nes" else 0))
 
     for asset in project.music:
         options = music_overrides.get(asset.name, {})

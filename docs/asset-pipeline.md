@@ -27,6 +27,8 @@ frame_height = 16
 name = "engine"              # -> const gr_sfx_def engine_sfx
 file = "assets/engine.wav"
 sample_rate = 22050
+dmc_rate = 15                # NES DMC rate index 0..15 (default 15)
+dmc_loop = false             # NES DMC loop flag (default false)
 
 [[music]]
 name = "theme"               # -> const gr_song theme
@@ -59,6 +61,7 @@ vram_tiles = 512
 id = "mmc3"                  # nrom | mmc1 | mmc3
 prg_banks = 4                # 16 KB banks
 chr_banks = 2                # 8 KB banks
+mirroring = "vertical"       # horizontal | vertical | four-screen (NROM only)
 
 [mapper.gb]
 id = "mbc1"                  # none | mbc1 | mbc3 | mbc5
@@ -213,10 +216,18 @@ example.
 
 WAV input must be 8- or 16-bit mono/stereo PCM. It is resampled to the
 requested rate, converted to signed 8-bit and capped at 16,384 samples. The
-emitted `gr_sfx_def` uses `GR_WAVE_PCM`; on the PC backend the samples play
-directly, while GB, NES and SMS approximate them with tones until sample playback
-is wired up per target. SFX share the PSG with music on SMS/GG; generated
-`[[music]]` songs use a PSGlib-format stream (see below).
+emitted `gr_sfx_def` uses `GR_WAVE_PCM`; PC plays those samples directly, while
+GB and SMS approximate them with tones. On `nes` only, the same source WAV is
+also encoded as a 4-bit DMC sample: `process_audio()` emits a `gr_dmc`
+descriptor in the generated C and a 64-byte-aligned `*_dmc.s` in the linker's
+`DMC` segment. `dmc_rate` selects the APU rate index (0 ~ 4.2 kHz .. 15 ~ 33 kHz)
+and `dmc_loop` sets the loop bit; an invalid rate is a structured
+`budget.dmc_rate` error. Non-NES targets emit neither the descriptor nor the
+sample symbol, so the portable C file stays linkable everywhere. The manifest
+records `dmc_bytes`/`dmc_rate` for audio assets and includes DMC bytes in the
+NES ROM byte total; GB/PC/SMS always report `dmc_bytes: 0`. SFX share the PSG
+with music on SMS/GG; generated `[[music]]` songs use a PSGlib-format stream
+(see below).
 
 ## Music (tracker scores)
 
@@ -289,9 +300,10 @@ SFX. The manifest records `kind: "music"` with `notes`, `psg_bytes` and `frames`
 - total unique tiles against VRAM,
 - live sprite count and per-scanline limit,
 - generated asset bytes against the ROM limit,
-- NES mapper ID, power-of-two PRG count (2..16 on MMC1/MMC3, 2 on NROM),
-  power-of-two CHR count (up to 16), per-image bank/tile ranges and the
-  256-tile capacity of each CHR bank.
+- NES mapper ID, mirroring mode (four-screen only on NROM), power-of-two PRG
+  count (2..16 on MMC1/MMC3, 2 on NROM), power-of-two CHR count (up to 16),
+  per-image bank/tile ranges, the 256-tile capacity of each CHR bank, and a
+  `dmc_rate` in 0..15. Generated DMC bytes count toward the NES ROM budget.
 - Game Boy mapper ID, power-of-two ROM/SRAM bank counts and per-mapper caps.
 - SMS power-of-two ROM bank count (2..64), the ROM-size header code and that the
   declared layout fits `budgets.sms.rom_kb`.

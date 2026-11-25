@@ -247,8 +247,8 @@ layout configured in `project.toml`, so games can use the bank set immediately.
 - CHR: two 4 KB windows, committed to `$B000` (slot 0) and `$C000` (slot 1).
 - Writes to `$8000-$9FFF` with bit 7 set reset the shift register; the fifth
   following bit clocks the value into the register selected by the address
-  range. Init programs control `$1E`: vertical mirroring, 16 KB PRG mode, 4 KB
-  CHR mode.
+  range. Init programs control `$1C | mirror bits`: 2 = vertical, 3 =
+  horizontal mirroring, 16 KB PRG mode, 4 KB CHR mode.
 
 ### MMC3 writer
 
@@ -258,8 +258,9 @@ layout configured in `project.toml`, so games can use the bank set immediately.
   the pattern tables are defined. Runtime slot 2 (R2) was verified to control
   the sprite pattern table used by 8x8 sprites.
 - Each bank write emits `$8000` = register index followed by `$8001` = bank
-  value. Init sets vertical mirroring (`$A000`) and disables IRQs (`$E000`);
-  PRG mode 0 is bit 6 clear in the `$8000` writes.
+  value. Init writes the configured mirroring bit to `$A000` (0 = vertical,
+  1 = horizontal) and disables IRQs (`$E000`); PRG mode 0 is bit 6 clear in the
+  `$8000` writes.
 
 ## Project configuration
 
@@ -270,11 +271,19 @@ layout configured in `project.toml`, so games can use the bank set immediately.
 id = "mmc3"        # nrom | mmc1 | mmc3
 prg_banks = 4      # 16 KB PRG banks: 2, 4, 8 ... 16 on mmc1/mmc3
 chr_banks = 2      # 8 KB CHR banks: 1, 2, 4 ... 16 on mmc1/mmc3
+mirroring = "vertical"  # horizontal | vertical | four-screen (NROM only)
 ```
 
-`gr check --target nes` validates the ID, power-of-two PRG counts between 2 and
-16 (up to 256 KB), power-of-two CHR counts up to 16 (128 KB), NROM's two-bank
-PRG / one-bank CHR limits and each image's placement. CHR banks and local tile indices can be pinned globally or
+`mirroring` sets the iNES header bit (horizontal 0, vertical 1, four-screen 8)
+and the startup mapper register value. Four-screen needs a board with four
+physical nametables, so it is rejected on MMC1/MMC3; those boards use their
+mirroring registers and accept horizontal or vertical. Games select one of the
+four logical nametables with `gr_bg_set_nametable()` and can split background
+palettes with `gr_bg_set_palette_map()`; see [`api.md`](api.md#sprites-backgrounds-palettes).
+
+`gr check --target nes` validates the ID, mirroring mode, power-of-two PRG counts
+between 2 and 16 (up to 256 KB), power-of-two CHR counts up to 16 (128 KB),
+NROM's two-bank PRG / one-bank CHR limits and each image's placement. CHR banks and local tile indices can be pinned globally or
 per target:
 
 ```toml
@@ -296,10 +305,11 @@ overflowing tile ranges, and two assets claiming the same tile in one bank.
 Without explicit `chr_tile`, backgrounds are packed from tile 0 and sprites
 from tile 4 within their assigned bank, preserving the original default layout.
 
-The build driver passes the mapper ID and bank counts to ca65 as
-`GR_NES_MAPPER`, `GR_NES_PRG_BANKS` and `GR_NES_CHR_BANKS`, which drive both the
-header and startup mapper programming in `targets/nes/src/nes_crt0.s`. It also
-writes a generated linker config when either count is non-default: `ROM2` is
+The build driver passes the mapper ID, bank counts and mirroring bit to ca65 as
+`GR_NES_MAPPER`, `GR_NES_PRG_BANKS`, `GR_NES_CHR_BANKS` and `GR_NES_MIRROR`, which
+drive both the header and startup mapper programming in
+`targets/nes/src/nes_crt0.s`. It also writes a generated linker config for every
+layout, giving generated DMC samples a 64-byte-aligned `DMC` segment: `ROM2` is
 enlarged for CHR banks, while PRG layouts above 32 KB add data-only segments
 `PRG0..PRG(n-3)`, keep main code in `ROMFIX` ($C000-$FFFF), link `overlay.c`
 into a `CODE2` segment in the switchable code bank, and copy a `RAMCODE`
@@ -307,13 +317,13 @@ routine into $7400. Generated CHR is emitted as `chr.s` into the CHR segment
 rather than a C array, since cc65 cannot compile arrays over 64 KB.
 Layouts above 15 PRG or CHR banks use a NES 2.0 header (byte 7 format bits,
 bytes 8/9 size MSBs, byte 10 PRG RAM size); smaller layouts retain iNES.
-`gr build/check/run --mapper`, `--prg-banks` and `--chr-banks` override these
-values for one command without editing `project.toml`.
+`gr build/check/run --mapper`, `--prg-banks`, `--chr-banks` and `--mirroring`
+override these values for one command without editing `project.toml`.
 
 MMC3 startup deserves a note: `$E000` is IRQ disable, not mode control. Every
 `$8000` bank-select write carries bit 7 (4 KB CHR mode) with bit 6 clear (PRG
 mode 0), and R0-R7 are all programmed so both pattern tables are defined. With
-`NES_CTRL = 0x90`, backgrounds read `$1000` and sprites read `$0000`; leaving
+`NES_CTRL = 0x90`, backgrounds read `$0000` and sprites read `$1000`; leaving
 R1/R3/R4/R5 at their power-on values makes the background black. R7 is programmed to the last 8 KB code bank so `$A000-$BFFF` does not alias a
 data bank. Bank 0's table is mirrored into both 4 KB halves of an 8 KB asset
 bank, so consecutive 4 KB register values from the same asset bank render

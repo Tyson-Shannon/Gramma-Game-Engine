@@ -8,6 +8,7 @@
 ; GR_NES_MAPPER    = 0 (NROM), 1 (MMC1) or 4 (MMC3)
 ; GR_NES_PRG_BANKS = iNES header value (16 KB units for every mapper)
 ; GR_NES_CHR_BANKS = iNES header value (8 KB units)
+; GR_NES_MIRROR    = 0 horizontal, 1 vertical, 8 four-screen (iNES bits)
 
         .export         _exit
         .export         __STARTUP__ : absolute = 1      ; Mark as startup
@@ -50,6 +51,18 @@ GR_CHR_BANKS = GR_NES_CHR_BANKS
         .else
 GR_CHR_BANKS = 1
         .endif
+        .ifdef GR_NES_MIRROR
+GR_MIRROR = GR_NES_MIRROR
+        .else
+GR_MIRROR = 1                   ; vertical, matching older Gramma ROMs
+        .endif
+        .if GR_MIRROR = 0
+GR_MMC1_MIRROR = 3              ; MMC1 control: horizontal
+GR_MMC3_MIRROR = 1              ; MMC3 $A000 bit 0: horizontal
+        .else
+GR_MMC1_MIRROR = 2              ; MMC1 control: vertical
+GR_MMC3_MIRROR = 0              ; MMC3 $A000 bit 0: vertical
+        .endif
 
 ; Export mapper configuration as real ROM bytes. Absolute symbols would be
 ; treated by C as addresses, not values, so the bytes must live in a PRG
@@ -67,6 +80,8 @@ _gr_nes_prg_banks:
 ; ($0500-$07FF) and outside the OAM DMA page at $7F00.
 NES_SCROLL_X    = $7EE0
 NES_SCROLL_Y    = $7EE1
+; Full $2000 shadow, including the two nametable bits selected by gr_bg.
+NES_CTRL        = $7EE2
 
 ; ------------------------------------------------------------------------
 ; iNES/NES 2.0 header: mapper and bank counts come from project.toml. Counts
@@ -104,7 +119,7 @@ GR_CHR_HEADER = GR_CHR_BANKS
         .byte   $4e,$45,$53,$1a
         .byte   GR_PRG_HEADER
         .byte   GR_CHR_HEADER
-        .byte   ((GR_MAPPER & $0f) << 4) | $03 ; low mapper + vertical mirror
+        .byte   ((GR_MAPPER & $0f) << 4) | $02 | GR_MIRROR
         .byte   (GR_FORMAT_VERSION << 2) | ((GR_MAPPER >> 4) & $0f)
         .byte   GR_PRG_MSB              ; byte 8: PRG size MSB (NES 2.0)
         .byte   GR_CHR_MSB              ; byte 9: CHR size MSB (NES 2.0)
@@ -127,6 +142,9 @@ start:
         stx     ringcount
         stx     NES_SCROLL_X
         stx     NES_SCROLL_Y
+        lda     #$90            ; NMI on, sprite table $1000, bg table $0000
+        sta     NES_CTRL
+        sta     PPU_CTRL1
         txs
 
         jsr     mapper_init     ; program MMC1/MMC3 before any banked code runs
@@ -201,8 +219,8 @@ GR_PRG_CODE_BANK2 = GR_PRG_CODE_BANK + 1
 
 mapper_init:
         .if GR_MAPPER = 1
-        ; Control $1E: vertical mirroring, 16 KB upper-fixed PRG, 4 KB CHR.
-        MMC1_SERIAL $8000, $1e
+        ; Control $1C + mirror bits: 16 KB upper-fixed PRG, 4 KB CHR.
+        MMC1_SERIAL $8000, ($1c | GR_MMC1_MIRROR)
         ; The switchable lower window must show the code bank (N-2).
         MMC1_SERIAL $a000, (GR_PRG_BANKS - 2)
         ; CHR banks 0 for both pattern tables.
@@ -217,7 +235,7 @@ mapper_init:
         ;   R2-R5 (1 KB) -> PPU $0000-$0FFF (sprites)     = CHR $0000-$0FFF
         ;   R6/R7 -> the two 8 KB halves of PRG bank N-2 at $8000-$BFFF
         ;   $C000-$FFFF fixed to the final two 8 KB banks
-        lda     #$00            ; vertical mirroring
+        lda     #GR_MMC3_MIRROR
         sta     $A000
         lda     #$00            ; IRQ disable
         sta     $E000
@@ -274,6 +292,9 @@ nmi:    pha
         inc     tickcount+1
 
 @s:     jsr     ppubuf_flush
+
+        lda     NES_CTRL        ; restore nametable bits for this frame
+        sta     PPU_CTRL1
 
         lda     #$20
         sta     PPU_VRAM_ADDR2

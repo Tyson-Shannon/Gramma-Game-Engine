@@ -25,3 +25,7 @@ test('vblank overlay queue', overlay_test)
 target_system_test = executable('test_target_system',
     files('test_target_system.c'), dependencies: [gramma_dep])
 test('target system extensions', target_system_test)
+
+nes_depth_test = executable('test_nes_depth', files('test_nes_depth.c'),
+    dependencies: [gramma_dep])
+test('NES depth helpers', nes_depth_test)

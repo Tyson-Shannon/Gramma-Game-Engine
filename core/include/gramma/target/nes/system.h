@@ -2,9 +2,11 @@
 #define GRAMMA_NES_SYSTEM_H
 
 /*
- * Opt-in NES system information. Values describe the stock 2C02 PPU: one
- * nametable, 8x8 2bpp background/sprite tiles and two serial controllers.
- * Mapper banks remain in the separate target/nes/mapper.h extension.
+ * Opt-in NES system information. Values describe the stock 2C02 PPU: 32x30
+ * tile nametables (two physical tables with horizontal/vertical mirroring,
+ * four with NROM four-screen), 8x8 2bpp background/sprite tiles and two serial
+ * controllers. Mapper banks remain in the separate target/nes/mapper.h
+ * extension.
  */
 
 #include <gramma/types.h>

@@ -14,11 +14,12 @@ Against `Gramma_Engine___Technical_Plan.md`:
   from the same game source; verified in a headless emulator.
 - NES backend: cc65 build producing a valid `.nes` ROM from the same game
   source. One fixed 32 KB PRG layout, mirrored 8 KB CHR banks (one by default,
-  more on MMC1/MMC3), one nametable, 8x8 sprites, serial two-player input, APU
-  music/SFX, coarse and fine scrolling; verified with `nes-py` (sprites,
-  movement and sub-tile
-  background shifts). A custom NMI in `targets/nes/src/nes_crt0.s` replaces the
-  cc65 handler so `$2005` is not reset every vblank.
+  more on MMC1/MMC3), selectable nametables with configurable mirroring and
+  split background palettes, 8x8 sprites, serial two-player input, APU
+  music/tones and DMC samples, coarse and fine scrolling; verified with
+  `nes-py` (sprites, movement and sub-tile background shifts). A custom NMI in
+  `targets/nes/src/nes_crt0.s` replaces the cc65 handler so `$2005` is not reset
+  every vblank and the `$2000` nametable shadow is restored.
 - Banking abstraction foundation: opt-in `gramma/bank.h` with cached bank sets
   and backend writers, plus `gramma/target/nes/mapper.h` with an NROM mapper
   state. The NES backend initialises zero switchable PRG/CHR slots; unsupported
@@ -46,6 +47,18 @@ Against `Gramma_Engine___Technical_Plan.md`:
   RAM-resident `gr_nes_prg_read()` copies bytes from them. A four-bank MMC3
   ROM renders and switches CHR correctly in `nes-py`. The overlay queue links
   into a second code segment so `ROMFIX` still fits in 16 KB.
+- NES depth: `[mapper.nes] mirroring` and `gr check/build/run --mirroring`
+  select horizontal, vertical or four-screen nametable layout; four-screen is
+  validated as NROM-only, and MMC1/MMC3 startup writes the matching register
+  bits. `gr_bg_set_nametable()` plus `gr_bg_set_palette_map()` choose the
+  nametable and pack per-tile palettes into attribute bytes, with the portable
+  `gr_bg_attribute()` helper covered by C tests. WAV SFX also encode to a
+  64-byte-aligned 4-bit DMC sample in a `DMC` ROM segment, played through the
+  APU with a configurable rate/loop. Header-byte checks (`0x42` horizontal MMC3,
+  `0x43` vertical MMC3, `0x0a` four-screen NROM), the same `nes-py` boot/smoke and
+  Python conformance tests pass; physical hardware and a dedicated visual demo
+  remain pending. See [`targets.md`](targets.md#nes-notes) and
+  [`asset-pipeline.md`](asset-pipeline.md#audio).
 - Game Boy MBC bank sets: MBC1/MBC3/MBC5 expose one 16 KB ROM window and an
   optional 8 KB SRAM window. `[mapper.gb]` drives GBDK cart flags, and the
   shipped MBC1 ROM probes a bank-2 sentinel through a `BANKED` helper.
@@ -110,9 +123,10 @@ Against `Gramma_Engine___Technical_Plan.md`:
   boundary for a future GUI. See [`gui-frontend.md`](gui-frontend.md).
 - Example "test-kart": scrolling background, animated two-player sprites,
   music and SFX from one source tree.
-- Tests: C fixed-point, bank-abstraction, GB/SMS mapper, overlay and target
-  system unit tests, Python pipeline/budget/mapper/Grain/template/API-doc/Docker/
-  LSP tests (including a Node smoke test of the VS Code adapter and LSP framing),
+- Tests: C fixed-point, bank-abstraction, GB/SMS mapper, NES depth helper,
+  overlay and target system unit tests, Python pipeline/budget/mapper/NES
+  depth/Grain/template/API-doc/Docker/LSP tests (including a Node smoke test of
+  the VS Code adapter and LSP framing),
   headless simulator smoke test, GB/NES/SMS ROM
   structure checks and PyBoy/`nes-py` emulator smoke tests in CI for rendering,
   sprites, scrolling and banked art. SMS/GG CI verifies ROM structure because no
@@ -125,10 +139,13 @@ Against `Gramma_Engine___Technical_Plan.md`:
 - **Additional backends**: Genesis, GBA and SNES. Budget profiles and target
   selection hooks are in place, but no backend code. SMS/GG is implemented and
   structurally verified.
-- **NES depth**: NROM, MMC1 and MMC3 ROM headers, startup programming, C-side
-  runtime bank switching, larger CHR layouts and larger PRG layouts all work.
-  Split palettes/nametables, DMC samples and physical hardware testing remain
-  out of scope. Fine scrolling works via the custom NMI.
+- **NES depth (remaining)**: mapper headers, startup programming, runtime bank
+  switching, larger CHR/PRG layouts, mirroring, selectable nametables, split
+  palettes and DMC playback are implemented (see Done). No dedicated ROM scene
+  yet exercises all four nametables, split palettes and looping DMC audibly;
+  the `nes-py` smoke covers boot, sprites, scrolling and header bits, not those
+  visuals. Physical hardware testing remains deferred. Fine scrolling works via
+  the custom NMI.
 - **Physical hardware (deferred)**: GB and NES are verified in emulators only.
   The manual checklist in [`hardware-validation.md`](hardware-validation.md)
   covers MBC bank probes, GB overlays and NES CHR/PRG bank behavior, but is
@@ -173,5 +190,9 @@ cart; emulator passes are not recorded as hardware results.
    of the portable C core or pipeline. Add asset-mutation and progress methods
    behind a contract bump if the editor needs them; see
    [`gui-frontend.md`](gui-frontend.md).
+5. **NES depth demo:** add a small scene that visibly switches nametables,
+   mixes background palettes and plays a looping DMC sample, then extend the
+   `nes-py` smoke to check those frames. Keep the physical-hardware checklist
+   deferred until a cart is available.
 
 See [`progress.md`](progress.md) for the chronological change log.

@@ -75,6 +75,9 @@ before velocity integration.
 void gr_bg_init(gr_bg *bg, const gr_tileset *tileset, const gr_map *map,
                 uint8_t pal_slot);
 void gr_bg_set_scroll(gr_bg *bg, int16_t x, int16_t y);
+void gr_bg_set_nametable(gr_bg *bg, uint8_t nametable);
+void gr_bg_set_palette_map(gr_bg *bg, const uint8_t *palette_map);
+uint8_t gr_bg_attribute(const gr_bg *bg, uint8_t ax, uint8_t ay);
 void gr_sprite_show(gr_sprite *s, uint8_t pal_slot, int16_t x, int16_t y);
 void gr_sprite_hide(gr_sprite *s);
 void gr_sprite_set_frame(gr_sprite *s, uint8_t frame);
@@ -88,10 +91,19 @@ palette; otherwise the generated palette is used. `gr_map` is a row-major
 array of tile indices; backgrounds wrap at map edges when scrolled. `gr_bg_set_scroll`
 accepts pixel coordinates; the NES applies coarse scrolling by rewriting a
 nametable column and fine scrolling through the custom NMI, so sub-tile shifts
-work. On NES, RGB555 colors are quantized to the nearest 2C02 palette entry;
-each nametable currently uses one uniform background palette slot. On SMS/GG,
-colors convert to CRAM bytes/words with 16 entries per BG and sprite palette;
-background tiles occupy VRAM 0-255 and sprite tiles 256-511.
+work.
+
+`gr_bg_set_nametable()` selects nametable 0..3 on NES (the value is masked to
+two bits, matching `$2000`); other targets ignore it. `gr_bg_init()` starts at
+nametable 0. `gr_bg_set_palette_map()` optionally supplies one background
+palette index (0..3) per map tile, letting one nametable use all four 2C02
+background palettes; `NULL` keeps the single `pal_slot` used by `gr_bg_init()`.
+The array must stay valid and hold `map->width * map->height` bytes while the
+background is drawn. `gr_bg_attribute(bg, ax, ay)` is the portable packing
+helper: it returns the 8-bit attribute byte for one 8x8 block of 16x16 tile
+regions. On NES, RGB555 colors are quantized to the nearest 2C02 palette entry.
+On SMS/GG, colors convert to CRAM bytes/words with 16 entries per BG and sprite
+palette; background tiles occupy VRAM 0-255 and sprite tiles 256-511.
 
 ## Input
 
@@ -115,6 +127,13 @@ unavailable.
 gr_result gr_music_play(const gr_song *song);
 void      gr_music_stop(void);
 void      gr_sfx_play(uint16_t sfx_id, uint8_t channel);
+
+typedef struct {
+    uint8_t        rate;    /* NES DMC rate index, 0..15 */
+    uint16_t       length;  /* bytes, padded to a multiple of 16 */
+    const uint8_t *data;
+    bool           loop;
+} gr_dmc;
 ```
 
 Music is a compiled 16th-note event stream, not a decoded audio file, so each
@@ -125,10 +144,12 @@ works on every target. Hand-written four-field `gr_song` initializers remain
 valid C and leave `psg` as `NULL`. `[[music]]` scores compile to that symbol;
 see [`asset-pipeline.md`](asset-pipeline.md#music-tracker-scores).
 
-`gr_sfx_def` describes either a synthesized wave (square/triangle/saw/noise) or
-pipeline-converted PCM. The Game Boy backend approximates PCM SFX with a
-tone/noise channel; the NES backend also substitutes a short pulse tone because
-DMC playback is not yet implemented. SMS/GG play ordinary note streams as
+`gr_sfx_def` describes a synthesized wave (square/triangle/saw/noise),
+pipeline-converted PCM, or an optional NES `gr_dmc` sample. On NES, a WAV asset
+gets a 4-bit DMC twin generated ahead of time; `gr_sfx_play()` starts it on the
+APU DMC channel and falls back to the old pulse tone only when `dmc` is `NULL`.
+The Game Boy backend approximates PCM SFX with a tone/noise channel. SMS/GG play
+ordinary note streams as
 SN76489 tones on channel 0, while generated songs with `psg != NULL` use a small
 built-in PSGlib-format interpreter for up to four channels (three tone and one
 noise). Compressed PSG data is not supported: the player stops on any reserved
