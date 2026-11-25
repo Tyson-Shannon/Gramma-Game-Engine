@@ -4,13 +4,16 @@ A universal retro/console game engine for homebrew development. Write one C
 game against a portable API; Gramma compiles native binaries per target and
 converts the same source assets into each console's native tile formats.
 
-This repository currently contains a working **Phase 2 engine** plus the first
-Phase 3 tracks: **Grain v1**, a statically typed, GDScript-inspired language with
-locals, user functions and fixed arrays that transpiles ahead of time to the
-portable C API (no console interpreter), a **tracker music compiler** that turns
-text scores into portable song data with PSGlib output for SMS/GG, and a **Tiled
-map importer** that turns `.tmx` tile layers into the same `gr_map`/`gr_tileset`
-assets as PNG backgrounds.
+This repository contains a working **Phase 2 engine** plus the Phase 3
+developer-experience tracks: **Grain v1**, a statically typed, GDScript-inspired
+language with locals, user functions and fixed arrays that transpiles ahead of
+time to the portable C API (no console interpreter), a **tracker music compiler**
+that turns text scores into portable song data with PSGlib output for SMS/GG, a
+**Tiled map importer** that turns `.tmx` tile layers into the same
+`gr_map`/`gr_tileset` assets as PNG backgrounds, three **starter templates**,
+a deterministic **generated API reference**, pinned **Docker toolchain
+definitions**, a dependency-free **Grain language server**, and opt-in
+per-target system headers.
 Included are the portable core, SDL2 PC simulator, Game Boy/GBC backend
 (GBDK-2020, MBC1/MBC3/MBC5), NES backend (cc65, NROM/MMC1/MMC3), SMS/Game Gear
 backend (SDCC + devkitSMS, Sega slot-2 mapper), opt-in banking and vblank
@@ -36,9 +39,16 @@ pinned devkitSMS commit.
 ./tools/gr/gr build --target sms        # produce a real Sega mapper .sms ROM
 ./tools/gr/gr build --target sms --gg   # produce a Game Gear .gg ROM
 ./tools/gr/gr grain --check --project examples/grain-demo  # check Grain source
-./tools/gr/gr new /tmp/my-game          # starter project
-cd /tmp/my-game && gr run --target pc   # (add tools/gr to PATH for this)
+./tools/gr/gr new --template grain-music /tmp/my-game      # playable starter
+./tools/gr/gr docs --check               # verify generated API reference
+cd /tmp/my-game && gr run --target pc    # (add tools/gr to PATH for this)
 ```
+
+Available `gr new` templates are `c` (portable C), `grain` (AOT Grain) and
+`grain-music` (Grain plus a tracker score). Each writes its own assets, source,
+README and per-target build instructions. `gr docs` regenerates
+`docs/generated/api-reference.md`; `gr docs --check` fails when it is stale.
+`gr lsp` starts the dependency-free language server over stdio for editors.
 
 The PC simulator runs from `examples/test-kart` by default. Headless smoke
 test (also used in CI):
@@ -138,6 +148,17 @@ physical-hardware checks remain future work. See
 [docs/targets.md](docs/targets.md) for limits and
 [docs/banking.md](docs/banking.md) for the mapper API.
 
+## Opt-in target headers
+
+`gramma.h` stays portable and does not include hardware-specific headers.
+Banking, mapper and overlay APIs are opt-in, as are the new capability headers
+`<gramma/target/gb/system.h>`, `<gramma/target/nes/system.h>` and
+`<gramma/target/sms/system.h>`. Each exposes a `gr_*_system_query()` function
+plus constants for that console; querying the wrong target returns
+`GR_ERR_UNSUPPORTED` instead of silently reporting fake limits. See
+[docs/api.md](docs/api.md#opt-in-target-system-headers) and the
+[generated API reference](docs/generated/api-reference.md).
+
 ## Grain language
 
 Write a whole game in `src/*.grain` and let `gr build` transpile it into
@@ -183,9 +204,21 @@ anything. Add `[grain] sources = [...]` to `project.toml` or rely on automatic
 documented in [docs/grain.md](docs/grain.md).
 
 An optional VS Code extension in [`editors/vscode-grain/`](editors/vscode-grain/)
-provides `.grain` syntax highlighting and publishes the same `--check`
-diagnostics as problems on open/change/save. It shells out to the `gr` CLI;
-there is no separate language server.
+provides `.grain` syntax highlighting and starts `gr lsp`, a dependency-free
+stdio JSON-RPC language server. It publishes compiler diagnostics and supports
+completion, go-to-definition, hover, document symbols and single-file rename.
+It keeps the original `gr grain --check` adapter as a fallback when the server
+cannot start; cross-file refactoring is not in v1.
+
+## Developer tooling
+
+`gr docs` generates `docs/generated/api-reference.md` from the public headers,
+and hosted CI runs `gr docs --check` so a header change cannot leave the
+reference stale. The narrative guide stays in [docs/api.md](docs/api.md).
+[`docker/`](docker/) contains a multi-stage `Dockerfile`, a build helper and a
+README pinning GBDK 4.6.0, cc65 2.19, SDCC 4.5.0 and a fixed devkitSMS commit by
+checksum. Those images are not built here and hosted CI still installs tools on
+the runner; static tests verify the pins and documented environment.
 
 ## Controls (PC simulator)
 
@@ -206,13 +239,14 @@ targets/pc/           SDL2 simulator backend (software tile renderer + synth)
 targets/gb/           Game Boy / GBC backend (GBDK-2020)
 targets/nes/          NES backend (cc65, NROM/MMC1/MMC3, custom NMI)
 targets/sms/          SMS/Game Gear backend (SDCC + devkitSMS, VDP + PSG)
-tools/gr/             `gr` CLI: new, assets, grain, check, build, run, doctor
-pipeline/             PNG/TMX/WAV/tick -> C arrays, budget profiles, Grain compiler
+tools/gr/             `gr` CLI: new, docs, lsp, assets, grain, check, build, run, doctor
+pipeline/             PNG/TMX/WAV/tick -> C arrays, budget profiles, Grain compiler, API docs
 examples/test-kart/   shared C example game and its source assets
 examples/grain-demo/  game written entirely in Grain
-editors/vscode-grain/ VS Code syntax highlighting and --check diagnostics
-tests/                C unit tests, Python pipeline/Grain tests, emulator smokes
-docs/                 API, architecture, targets, pipeline, banking, grain, hardware validation, roadmap, progress
+editors/vscode-grain/ VS Code syntax highlighting plus the Grain LSP client
+docker/               pinned multi-stage toolchain images and build helper
+tests/                C unit tests, Python pipeline/Grain/LSP/template tests, emulator smokes
+docs/                 API guide + generated reference, architecture, targets, pipeline, banking, grain, hardware validation, roadmap, progress
 ```
 
 ## Design rules

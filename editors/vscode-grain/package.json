@@ -1,8 +1,8 @@
 {
   "name": "grain-gramma",
   "displayName": "Grain (Gramma)",
-  "description": "Syntax highlighting and gr grain --check diagnostics for Grain (.grain) files.",
-  "version": "0.1.0",
+  "description": "Grain syntax highlighting plus a real language server: diagnostics, completion, go-to-definition and rename.",
+  "version": "0.2.0",
   "publisher": "gramma",
   "license": "MIT",
   "engines": {

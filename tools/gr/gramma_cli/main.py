@@ -15,7 +15,9 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO / "pipeline"))
 
-from gramma_pipeline import check_budget, format_report, generate, load_project  # noqa: E402
+from gramma_pipeline import (  # noqa: E402
+    build_api_reference, check_budget, format_report, generate,
+    generate_api_reference, load_project)
 from gramma_pipeline.grain import GrainError, check_grain, transpile  # noqa: E402
 from gramma_pipeline.budget import (  # noqa: E402
     GB_MAPPERS, NES_MAPPERS, gb_mapper_config, sms_mapper_config)
@@ -24,7 +26,8 @@ from .cc65 import cc65_status, ensure_cc65  # noqa: E402
 from .gbdk import ensure_gbdk, gbdk_status  # noqa: E402
 from .sdl import sdl_environment, sdl_status  # noqa: E402
 from .sms import ensure_sms, sms_status  # noqa: E402
-from .template import create_project  # noqa: E402
+from .lsp import serve as serve_lsp  # noqa: E402
+from .template import TEMPLATES, create_project  # noqa: E402
 
 
 def _execute(args: list[str], env: dict[str, str] | None = None) -> int:
@@ -56,9 +59,10 @@ def cmd_new(args: argparse.Namespace) -> int:
         print(f"error: {directory} already exists", file=sys.stderr)
         return 1
     name = args.name or directory.name
-    create_project(directory, name)
-    print(f"created {directory}")
-    print(f"next: cd {directory} && gr run --target pc")
+    template = args.template
+    create_project(directory, name, template)
+    print(f"created {directory} (template {template})")
+    print(f"next: cd {directory} && gr run --target pc --project .")
     return 0
 
 
@@ -318,9 +322,11 @@ def _build_nes(root: Path, project, builddir: Path) -> tuple[int, Path | None]:
     chr_banks = int(cfg.get("chr_banks", 1))
     code2_sources: list[Path] = []
     if prg_banks > 2:
-        # Keep ROMFIX under 16 KB. The overlay queue is self-contained, so its
-        # code can run from the switchable bank that startup maps at $8000.
-        code2_sources = [REPO / "core" / "src" / "overlay.c"]
+        # Keep ROMFIX under 16 KB. Both the overlay queue and the target system
+        # queries are self-contained, so their code can run from the extra code
+        # bank that startup maps at $8000.
+        code2_sources = [REPO / "core" / "src" / "overlay.c",
+                         REPO / "core" / "src" / "target_system.c"]
         sources = [source for source in sources if source not in code2_sources]
     print(f"  NES mapper: {mapper_name} (PRG banks {prg_banks}, CHR banks {chr_banks})")
 
@@ -586,6 +592,27 @@ def cmd_targets(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lsp(args: argparse.Namespace) -> int:
+    return serve_lsp()
+
+
+def cmd_docs(args: argparse.Namespace) -> int:
+    if args.check:
+        path = REPO / "docs" / "generated" / "api-reference.md"
+        if not path.is_file():
+            print(f"error: {path} is missing; run `gr docs`", file=sys.stderr)
+            return 1
+        expected = build_api_reference(REPO)
+        if path.read_text(encoding="utf-8") != expected:
+            print(f"error: {path} is stale; run `gr docs`", file=sys.stderr)
+            return 1
+        print(f"api reference up to date: {path}")
+        return 0
+    path = generate_api_reference(REPO)
+    print(f"generated {path}")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     print("Gramma doctor")
     print(f"  repo:      {REPO}")
@@ -630,6 +657,8 @@ def build_parser() -> argparse.ArgumentParser:
     new = commands.add_parser("new", help="create a starter project")
     new.add_argument("directory")
     new.add_argument("--name")
+    new.add_argument("--template", choices=sorted(TEMPLATES), default="c",
+                     help="starter to write (default: c)")
     new.set_defaults(func=cmd_new)
 
     assets = commands.add_parser("assets", help="run the asset pipeline")
@@ -680,6 +709,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     targets = commands.add_parser("targets", help="list supported targets")
     targets.set_defaults(func=cmd_targets)
+
+    lsp = commands.add_parser(
+        "lsp", help="run the Grain language server over stdio (JSON-RPC)")
+    lsp.set_defaults(func=cmd_lsp)
+
+    docs = commands.add_parser("docs", help="generate reference documentation")
+    docs.add_argument("--check", action="store_true",
+                      help="verify the generated API reference is current")
+    docs.set_defaults(func=cmd_docs)
 
     doctor = commands.add_parser("doctor", help="check local toolchains")
     doctor.set_defaults(func=cmd_doctor)

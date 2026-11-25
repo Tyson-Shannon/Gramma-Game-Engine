@@ -2,7 +2,11 @@
 
 Public header: [`core/include/gramma/gramma.h`](../core/include/gramma/gramma.h).
 It compiles as C99 on the host, with GBDK-2020's SDCC on the Game Boy, cc65 on
-the NES and SDCC + devkitSMS on SMS/Game Gear.
+the NES and SDCC + devkitSMS on SMS/Game Gear. For a declaration-by-declaration
+index of every public header, see the
+[generated API reference](generated/api-reference.md); `gr docs` regenerates it
+and `gr docs --check` verifies it in CI. This file remains the hand-written
+narrative guide.
 
 ## Grain (ahead-of-time language)
 
@@ -19,8 +23,10 @@ declarations are hoisted to function starts so cc65/SDCC accept the output.
 
 Use `gr grain --check` for diagnostics (`file:line:col: error: message`) and
 `gr build` to compile the generated C. The optional
-[`editors/vscode-grain/`](../editors/vscode-grain/) extension surfaces the same
-diagnostics in the editor without adding a runtime dependency.
+[`editors/vscode-grain/`](../editors/vscode-grain/) extension now starts `gr
+lsp`, a dependency-free stdio JSON-RPC language server with diagnostics,
+completion, go-to-definition, hover, document symbols and single-file rename. It
+falls back to `gr grain --check` when the server cannot start.
 `examples/grain-demo/` is a complete game written only in Grain. Full syntax,
 builtins and limits are in [`grain.md`](grain.md).
 
@@ -254,6 +260,35 @@ gr_bank_set *gr_sms_mapper_rom_banks(void);
 `[mapper.sms] rom_banks` accepts 2, 4, 8 ... 64; `gr check/build/run` accept
 `--sms-rom-banks`. The build writes the SEGA header size code, emits `BANKN`
 segments for `bankN_*.c` files and checks bank sentinels in CI.
+
+## Opt-in target system headers
+
+Three more opt-in headers describe fixed console capabilities without adding
+anything to `gramma.h`:
+
+```c
+#include <gramma/target/gb/system.h>   /* gr_gb_system_caps */
+#include <gramma/target/nes/system.h>  /* gr_nes_system_caps */
+#include <gramma/target/sms/system.h>  /* gr_sms_system_caps */
+```
+
+Each exports constants (tile byte count, bits per pixel, palette size/slots,
+player count, screen size, plus NES nametable size or SMS sprite tile base) and
+one query:
+
+```c
+gr_result gr_gb_system_query(gr_gb_system_caps *out);
+gr_result gr_nes_system_query(gr_nes_system_caps *out);
+gr_result gr_sms_system_query(gr_sms_system_caps *out);
+```
+
+A query fills `*out` only when the build defines the matching
+`GRAMMA_TARGET_GB`, `GRAMMA_TARGET_NES` or `GRAMMA_TARGET_SMS`; otherwise it
+returns `GR_ERR_UNSUPPORTED`. A null pointer returns `GR_ERR_INVALID_ARG`. This
+lets portable code include all three headers, probe capabilities and fail
+explicitly instead of inventing a runtime target detection layer. The generated
+[API reference](generated/api-reference.md) indexes these headers alongside the
+mapper and overlay extensions.
 
 ## Vblank overlays (opt-in)
 

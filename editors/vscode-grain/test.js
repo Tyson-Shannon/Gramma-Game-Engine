@@ -5,6 +5,9 @@ const path = require('path');
 const {
     DIAGNOSTIC_RE, matchesDocument, parseDiagnostics,
 } = require('./diagnostics');
+const {
+    MessageReader, encodeMessage,
+} = require('./lsp-client');
 
 const output = [
     'grain OK: src/game.grain',
@@ -27,4 +30,17 @@ const root = path.resolve(__dirname, '..', '..', 'examples', 'grain-demo');
 assert.ok(matchesDocument(parsed[0], path.join(root, 'src', 'game.grain'), root));
 assert.ok(!matchesDocument(parsed[0], path.join(root, 'src', 'other.grain'), root));
 
-console.log('VS Code Grain diagnostics OK');
+// LSP framing must survive chunked stdio writes.
+const messages = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+    { jsonrpc: '2.0', method: 'textDocument/didOpen', params: { uri: 'file:///x' } },
+];
+const wire = Buffer.concat(messages.map(encodeMessage));
+const received = [];
+const reader = new MessageReader((message) => received.push(message));
+for (const byte of wire) {
+    reader.push(Buffer.from([byte]));
+}
+assert.deepStrictEqual(received, messages);
+
+console.log('VS Code Grain adapter and LSP framing OK');

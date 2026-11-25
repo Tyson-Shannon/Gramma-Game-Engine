@@ -29,8 +29,19 @@ jobs:
       - name: Pipeline tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
 
-      - name: VS Code Grain adapter test
+      - name: Generated API reference check
+        run: ./tools/gr/gr docs --check
+
+      - name: VS Code Grain adapter and LSP framing test
         run: node editors/vscode-grain/test.js
+
+      - name: Starter template smoke test (Grain + music)
+        run: |
+          rm -rf /tmp/gramma-template
+          ./tools/gr/gr new --template grain-music /tmp/gramma-template
+          ./tools/gr/gr build --target pc --project /tmp/gramma-template
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+            ./tools/gr/gr run --target pc --project /tmp/gramma-template --frames 5 --scale 1
 
       - name: Grain syntax and typecheck
         run: ./tools/gr/gr grain --check --project examples/grain-demo

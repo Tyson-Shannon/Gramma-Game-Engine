@@ -24,6 +24,8 @@ class VSCodeGrainTests(unittest.TestCase):
         self.assertEqual(manifest["main"], "./extension.js")
         self.assertIn("grain.cliPath",
                       manifest["contributes"]["configuration"]["properties"])
+        self.assertEqual(manifest["version"], "0.2.0")
+        self.assertTrue((EXTENSION / "lsp-client.js").is_file())
 
     def test_language_configuration_is_valid_json(self):
         config = json.loads((EXTENSION / "language-configuration.json").read_text(
@@ -48,7 +50,7 @@ class VSCodeGrainTests(unittest.TestCase):
         except FileNotFoundError:
             self.skipTest("node not available")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("diagnostics OK", result.stdout)
+        self.assertIn("LSP framing OK", result.stdout)
 
 
 if __name__ == "__main__":

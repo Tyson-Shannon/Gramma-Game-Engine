@@ -72,8 +72,9 @@ Against `Gramma_Engine___Technical_Plan.md`:
   `examples/grain-demo` imports its track from Tiled. See
   [`asset-pipeline.md`](asset-pipeline.md#tiled-maps).
 - Budget linter v0: ROM, VRAM, palette, sprite and nametable checks.
-- `gr` CLI: `new`, `assets`, `grain`/`transpile`, `check`, `build`, `run`,
-  `clean`, `targets`, `doctor`, with zero-sudo toolchain bootstrapping.
+- `gr` CLI: `new` (`c`, `grain`, `grain-music` templates), `docs`, `lsp`,
+  `assets`, `grain`/`transpile`, `check`, `build`, `run`, `clean`, `targets`,
+  `doctor`, with zero-sudo toolchain bootstrapping.
 - Grain language v1 (Phase 3): lexer, brace-delimited recursive-descent parser,
   static typechecker with source locations, and an AOT C89 transpiler that emits
   entity pools, scenes, handlers, `gr_config` and `main()` against the portable
@@ -81,13 +82,32 @@ Against `Gramma_Engine___Technical_Plan.md`:
   arrays (`T[N]`, `[...]`, `a[i]`) and C89 declaration hoisting. Integrated into
   `generate()`/`gr build`; `gr grain --check` reports diagnostics and
   `examples/grain-demo/` builds one Grain game for PC, GB, NES and SMS/GG. No
-  runtime interpreter ships. A thin VS Code extension highlights `.grain` files
-  and surfaces `--check` diagnostics. See [`grain.md`](grain.md).
+  runtime interpreter ships. See [`grain.md`](grain.md).
+- Starter templates and generated API docs (Phase 3): `gr new --template` writes
+  playable `c`, `grain` and `grain-music` projects with their own assets, README
+  and per-target instructions. `gr docs` emits `docs/generated/api-reference.md`
+  from the public headers, and CI runs `gr docs --check`; the narrative
+  [`api.md`](api.md) stays hand-written.
+- Pinned Docker toolchain definitions (Phase 3): [`docker/`](../docker/) has one
+  multi-stage `Dockerfile` with checksummed GBDK 4.6.0, cc65 2.19, SDCC 4.5.0 and
+  devkitSMS `561bc2cb` downloads, plus a build helper and README. Static tests
+  verify the pins and discovery environment. Images were not built here and
+  hosted CI still installs tools on the runner.
+- Grain language server v1 (Phase 3): `gr lsp` is a dependency-free stdio
+  JSON-RPC server with diagnostics, completion, go-to-definition, hover,
+  document symbols and single-file rename. The VS Code extension uses a small
+  local client and keeps the `gr grain --check` adapter as a fallback. There is
+  no cross-file workspace refactor.
+- More opt-in target headers (Phase 3): `gramma/target/{gb,nes,sms}/system.h`
+  export capability constants and `gr_*_system_query()`. They live outside
+  `gramma.h`, fail with `GR_ERR_UNSUPPORTED` on the wrong target, and are covered
+  by C89 compile checks, C unit tests and the generated API reference.
 - Example "test-kart": scrolling background, animated two-player sprites,
   music and SFX from one source tree.
-- Tests: C fixed-point, bank-abstraction, GB/SMS mapper and overlay unit tests,
-  Python pipeline/budget/mapper/Grain tests (including a Node smoke test of the
-  VS Code diagnostics adapter), headless simulator smoke test, GB/NES/SMS ROM
+- Tests: C fixed-point, bank-abstraction, GB/SMS mapper, overlay and target
+  system unit tests, Python pipeline/budget/mapper/Grain/template/API-doc/Docker/
+  LSP tests (including a Node smoke test of the VS Code adapter and LSP framing),
+  headless simulator smoke test, GB/NES/SMS ROM
   structure checks and PyBoy/`nes-py` emulator smoke tests in CI for rendering,
   sprites, scrolling and banked art. SMS/GG CI verifies ROM structure because no
   maintained headless SMS emulator is available in the CI image.
@@ -109,12 +129,12 @@ Against `Gramma_Engine___Technical_Plan.md`:
   skipped for now. Emulator CI remains the verification gate; skipped is not
   recorded as passed.
 - MOD/XM/IT importers (v1 accepts Gramma text scores), compressed PSGlib
-  streams, multi-layer Tiled compositing and tile animations, more per-target
-  extension headers, Docker toolchain images, a full Grain language server
-  (completion, rename, refactoring), performance guides and community beta.
+  streams, multi-layer Tiled compositing and tile animations, cross-file Grain
+  refactoring, performance guides and community beta.
 - CI matrix covers PC, GB and NES builds plus emulator smokes, and SMS/GG builds
-  plus structural ROM checks, not six toolchains. It also checks Grain sources
-  and builds `examples/grain-demo/` for all four targets. SMS rendered-frame
+  plus structural ROM checks, not six toolchains. It checks Grain sources, builds
+  `examples/grain-demo/` for all four targets, verifies the generated API
+  reference and runs a `grain-music` starter-project PC smoke. SMS rendered-frame
   emulation and physical hardware runs remain manual or future work by design.
 
 ## Next steps
@@ -127,12 +147,12 @@ cart; emulator passes are not recorded as hardware results.
 1. **SMS/GG runtime validation:** add a maintained headless SMS emulator or a
    manual emulator pass that confirms rendered frames, the B overlay and the
    bank-2 probe. Keep structural ROM checks as the CI gate until then.
-2. **Phase 3 tooling:** add Docker toolchain images. Tracker music and Tiled
-   `.tmx` import v1 are done; MOD/XM/IT import, compressed PSGlib streams and
-   multi-layer/animated Tiled maps can extend them later. A full Grain language
-   server can build on the thin VS Code CLI adapter if completion, rename and
-   refactoring are wanted. Revisit the CI matrix once more toolchains are
-   available.
+2. **Phase 3 tooling follow-ups:** starter templates, generated API docs,
+   Docker toolchain definitions, the Grain LSP and target system headers are done
+   as v1. The Docker images have not been built here and hosted CI still installs
+   tools on the runner; revisit the CI matrix if those images are adopted.
+   Remaining ideas are MOD/XM/IT import, compressed PSGlib streams,
+   multi-layer/animated Tiled maps and cross-file Grain refactoring.
 3. **Physical hardware (later):** when hardware and carts are available, run the
    manual checklist, record date/tester/hardware/ROM hash/result in its results
    table, and summarise the outcome in [`progress.md`](progress.md).

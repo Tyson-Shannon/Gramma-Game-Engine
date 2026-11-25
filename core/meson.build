@@ -10,6 +10,7 @@ core_sources = files(
     'src/gb_mapper.c',
     'src/sms_mapper.c',
     'src/overlay.c',
+    'src/target_system.c',
 )
 
 gramma_core = static_library('gramma_core', core_sources,

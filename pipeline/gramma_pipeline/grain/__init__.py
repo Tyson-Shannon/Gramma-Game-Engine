@@ -16,6 +16,7 @@ from .codegen import CodeGenerator, transpile
 from .errors import GrainError, SourcePos, format_errors
 from .lexer import tokenize
 from .parser import parse
+from .symbols import Symbol, builtin_symbols, collect_symbols
 from .typechecker import TypeChecker, typecheck
 
 
@@ -39,7 +40,8 @@ def transpile_file(path: Path | str) -> str:
 
 
 __all__ = [
-    "CodeGenerator", "GrainError", "SourcePos", "TypeChecker",
-    "check_grain", "format_errors", "parse", "tokenize", "transpile",
+    "CodeGenerator", "GrainError", "SourcePos", "Symbol", "TypeChecker",
+    "builtin_symbols", "check_grain", "collect_symbols", "format_errors",
+    "parse", "tokenize", "transpile",
     "transpile_file", "transpile_grain", "typecheck",
 ]

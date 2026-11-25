@@ -9,9 +9,11 @@ for PC, Game Boy, NES and SMS/Game Gear.
 
 The current compiler is v1: a real lexer, recursive-descent parser, static
 type checker and C back end with typed locals, user functions and fixed arrays.
-It is wired into `gr check`, `gr build` and the asset pipeline, and a VS Code
-extension provides syntax highlighting plus `--check` diagnostics. See
-[`progress.md`](progress.md) for the change log.
+It is wired into `gr check`, `gr build` and the asset pipeline. A dependency-free
+stdio JSON-RPC language server (`gr lsp`) powers an updated VS Code extension
+with diagnostics, completion, go-to-definition, hover, document symbols and
+single-file rename; the original `gr grain --check` adapter remains as a
+fallback. See [`progress.md`](progress.md) for the change log.
 
 ## Quick start
 
@@ -43,7 +45,10 @@ status 1.
 
 A complete, buildable example lives in `examples/grain-demo/`. Its single
 `src/game.grain` file builds a moving kart, a scrolling background, an SFX and
-an `on_draw()` sprite-frame handler for all four targets.
+an `on_draw()` sprite-frame handler for all four targets. For a fresh project,
+`gr new --template grain` writes a playable Grain starter and
+`gr new --template grain-music` adds a `[[music]]` tracker score that the same
+game plays with `music_play(theme)`.
 
 ## Syntax at a glance
 
@@ -232,19 +237,27 @@ checks are not part of v1. Treat out-of-range indexes as a programming error.
 
 ### Editor support
 
-`editors/vscode-grain/` contains a small VS Code extension: a TextMate grammar
-for `.grain` files and a diagnostics adapter that runs `gr grain --check` for
-the enclosing project and publishes its `file:line:col` errors. See its README
-for installation and the `grain.cliPath` setting. The extension never builds or
-transpiles; it only surfaces the same diagnostics as the CLI.
+`editors/vscode-grain/` contains a TextMate grammar for `.grain` files and a
+small local LSP client. On activation it starts `gr lsp`, which speaks
+JSON-RPC over stdio with no npm dependencies, and registers completion,
+definition, hover, document-symbol and rename providers. Diagnostics come from
+the same parser/typechecker used by `gr grain --check`. If the CLI cannot be
+started, the extension falls back to the original debounced `--check` adapter.
+Completion covers declared externs, entities, scenes, fields, functions,
+locals, parameters, builtins and constants; `.` narrows candidates to fields of
+the enclosing entity/scene. See the extension README for installation and
+`grain.cliPath`. Neither mode builds or transpiles the project.
 
 ## Implementation notes
 
 - `pipeline/gramma_pipeline/grain/` contains `lexer.py`, `parser.py`,
-  `types.py`, `typechecker.py`, `codegen.py` and shared AST/diagnostic types.
-  There is no runtime component in `core/`. User functions become static C
-  functions declared before the handlers and defined after the scenes; all
-  C89 declarations are hoisted to function starts.
+  `types.py`, `typechecker.py`, `codegen.py`, `symbols.py` and shared
+  AST/diagnostic types. `symbols.py` reuses source positions and the
+  typechecker's field tables for the language server; `tools/gr/gramma_cli/lsp.py`
+  implements the stdio JSON-RPC protocol. There is no runtime component in
+  `core/`. User functions become static C functions declared before the handlers
+  and defined after the scenes; all C89 declarations are hoisted to function
+  starts.
 - `Project.grain_sources` reads `[grain] sources` from `project.toml`, or
   auto-discovers `src/*.grain` and root `*.grain`.
 - `generate()` writes `generated/<target>/grain_<stem>.c` and adds it to the
@@ -265,8 +278,9 @@ transpiles; it only surfaces the same diagnostics as the CLI.
   supported.
 - Fixed-point literals are exact decimal-to-binary expressions, not hardware
   chip-specific values; per-target fixed widths come from `gramma/target.h`.
-- The VS Code extension is a thin CLI adapter, not a language server: it has
-  syntax highlighting and diagnostics but no completion, rename or refactoring.
+- The VS Code extension starts a real language server, but its index is one
+  document at a time: rename is single-file only, with no cross-file workspace
+  refactor. Hover and completion details come from the local symbol table.
 - Music/SFX are limited to what the portable API already provides. Generated
   songs from `[[music]]` scores are usable through `extern song`, but Grain does
   not parse scores itself.

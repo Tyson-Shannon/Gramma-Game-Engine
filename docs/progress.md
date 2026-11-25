@@ -4,6 +4,90 @@ Short, chronological record of engine milestones. See
 [`roadmap.md`](roadmap.md) for the living plan and
 [`banking.md`](banking.md) for the bank abstraction design.
 
+## 2026-11-24 - Phase 3 developer experience: templates, docs, Docker, Grain LSP and target headers
+
+### Progress
+
+- Closed the remaining Phase 3 developer-experience tracks without changing the
+  portable C API or the Grain ahead-of-time model. `gramma.h` still has no
+  console interpreter, runtime target detection or mandatory hardware headers.
+- `gr new` now writes playable, self-contained projects; API docs are generated
+  deterministically from public headers; toolchain pins live in one Docker
+  definition; Grain has a real local language server; and per-target capability
+  headers are available as opt-in extensions.
+
+### Changes
+
+- `tools/gr/gramma_cli/template.py` and `main.py`: added `c`, `grain` and
+  `grain-music` templates with `gr new --template`. Each project owns its PNG/
+  WAV (and tracker score where relevant), source, README and per-target build
+  instructions. The Grain templates emit `generated/<target>/grain_game.c`, not
+  a second runtime.
+- `pipeline/gramma_pipeline/apidocs.py` and `docs/generated/api-reference.md`:
+  `gr docs` regenerates a compact index of public functions, types and constants
+  with their header comments; `gr docs --check` fails when it is stale.
+  `docs/api.md` remains the hand-written narrative guide.
+- `docker/Dockerfile`, `docker/build.sh` and `docker/README.md`: one multi-stage
+  definition pins GBDK 4.6.0, cc65 2.19, SDCC 4.5.0 and devkitSMS commit
+  `561bc2cb9829cdf2e31ad8cd43835037c8c44a63` by SHA-256, with matching
+  `*_HOME` discovery variables for `gr`. Static tests verify the pins; the
+  images were not built here and hosted CI still installs tools on the runner.
+- `pipeline/gramma_pipeline/grain/symbols.py`, `tools/gr/gramma_cli/lsp.py` and
+  `gr lsp`: a dependency-free stdio JSON-RPC server for diagnostics, completion,
+  go-to-definition, hover, document symbols and single-file rename. The VS Code
+  extension gained `lsp-client.js`, LSP providers and version 0.2.0, while
+  retaining the `gr grain --check` adapter as a fallback. Cross-file refactoring
+  is explicitly out of v1.
+- `core/include/gramma/target/{gb,nes,sms}/system.h` and
+  `core/src/target_system.c`: opt-in capability constants and
+  `gr_*_system_query()` functions. They return `GR_ERR_UNSUPPORTED` on a
+  different target and `GR_ERR_INVALID_ARG` for a null output pointer. C89
+  compile checks, a Meson C test and the generated API reference cover them.
+  `tools/gr/gramma_cli/main.py` also compiles `target_system.c` into the extra
+  NES `CODE2` bank alongside `overlay.c` for layouts above two PRG banks so the
+  fixed bank stays under 16 KB.
+- `.github/workflows/ci.yml` and the local CI-equivalent script gained
+  `gr docs --check` and a `grain-music` template PC build/headless smoke. README,
+  API, Grain, editor, roadmap and this log were updated for all four slices.
+
+### Verification
+
+- Python tests: 116/116, including the new template, API-doc, Docker, LSP and
+  target-header tests. The Node adapter test now also checks LSP framing and
+  prints `VS Code Grain adapter and LSP framing OK`.
+- `gr docs` regenerated `docs/generated/api-reference.md` and `gr docs --check`
+  reports it up to date; the generated file indexes the GB/NES/SMS system
+  headers and their query functions.
+- `gr new --template grain-music /tmp/gramma-template`, a PC build and a
+  five-frame headless run all succeeded. The C template passes
+  `gcc -std=c89 -pedantic -Wall -Wextra -fsyntax-only`, and the system headers
+  compile cleanly for PC/GB/NES/SMS macros with no new warning from
+  `target_system.c`.
+- Full local CI-equivalent rerun: `ALL CI-EQUIVALENT CHECKS PASSED`. This
+  includes 6/6 Meson C tests, PC/GB/NES emulator smokes, Grain demo PC/GB/NES/
+  SMS builds, SMS/GG structural ROM checks and the four-bank NES ROM plus
+  emulator smoke. The first pass exposed a ROMFIX overflow of 124 bytes in the
+  four-bank NES build after `target_system.c` was added; moving that file into
+  `CODE2` fixed it, and the final full pass was clean.
+- `.github/workflows/ci.yml` parses cleanly with 36 steps, including the docs
+  check and starter-template smoke. Checksums were computed from the downloaded
+  pinned artifacts and are verified by the Dockerfile at image build time, but
+  no Docker image was built here.
+- Hosted CI has not been run or reported for these DX changes, so hosted green
+  is not claimed. Physical GB/NES/SMS/GG validation remains deferred; skipped is
+  not passed. SMS/GG emulator operation remains informal/user-observed only,
+  not a formal CI or hardware result.
+
+### Next steps
+
+1. Wait for a hosted CI result on the updated workflow and record it only when
+   it is observed or reported by the user.
+2. Optional follow-ups: build the pinned Docker images and consider adopting
+   them in hosted CI, add cross-file Grain refactoring, and extend API-doc
+   extraction if public headers gain new declaration shapes.
+3. Keep the hardware checklist and formal SMS/GG rendered-frame validation
+   pending as recorded in [`roadmap.md`](roadmap.md#not-done-from-the-plan).
+
 ## 2026-11-24 - Tiled `.tmx` map import v1
 
 ### Progress
@@ -40,17 +124,19 @@ Short, chronological record of engine milestones. See
   This includes the Grain demo PC/GB/NES/SMS builds, which now compile the Tiled
   map, plus the existing PC/GB/NES emulator smokes and SMS/GG structural ROM
   checks. Workflow YAML parses cleanly.
-- Hosted CI for the Tiled changes has **not** been run yet; the earlier hosted
-  green applies to the Grain v1/music state only. Physical GB/NES/SMS/GG
-  validation remains deferred, skipped is not recorded as passed, and SMS/GG
-  rendered-frame checking remains informal/user-observed only.
+- Hosted CI with the Tiled assets was subsequently reported green by the user,
+  including the Grain demo builds that compile the generated map; this is a
+  user-reported hosted result, while the local CI-equivalent pass was observed
+  directly. Physical GB/NES/SMS/GG validation remains deferred, skipped is not
+  recorded as passed, and SMS/GG rendered-frame checking remains
+  informal/user-observed only.
 
 ### Next steps
 
-1. Re-run hosted CI with the Tiled assets; do not claim it green until the
-   workflow has actually completed.
-2. Optional follow-ups: multi-layer/composited Tiled maps, CPU-side tile
+1. Optional follow-ups: multi-layer/composited Tiled maps, CPU-side tile
    flipping, tile animations, infinite maps and object layers.
+2. Continue other Phase 3 tooling and content work; see
+   [`roadmap.md`](roadmap.md#not-done-from-the-plan).
 
 ## 2026-11-24 - Tracker music compiler v1 (PSGlib for SMS/GG)
 
