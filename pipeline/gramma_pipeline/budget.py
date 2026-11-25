@@ -189,7 +189,7 @@ def check_budget(project: Project, target: str, manifest: dict) -> list[str]:
 
     for asset in manifest["assets"]:
         name = asset["name"]
-        if asset["kind"] == "audio":
+        if asset["kind"] in ("audio", "music"):
             continue
         if asset["bpp"] not in profile["bpp"]:
             errors.append(

@@ -32,6 +32,10 @@ name = "engine"
 file = "assets/engine.wav"
 sample_rate = 22050
 
+[[music]]
+name = "theme"
+file = "assets/theme.tick"
+
 [budgets.pc]
 rom_kb = 512
 vram_tiles = 1024

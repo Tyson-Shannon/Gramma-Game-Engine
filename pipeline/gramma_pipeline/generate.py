@@ -10,6 +10,7 @@ from pathlib import Path
 from .audio import process_audio
 from .grain import transpile as transpile_grain
 from .images import emit_image, process_image
+from .music import process_music
 from .project import load_project
 from .targets import PROFILES
 
@@ -146,6 +147,7 @@ def generate(root: Path, target: str, project=None,
     overrides = project.targets.get(target, {})
     image_overrides = overrides.get("image", {})
     audio_overrides = overrides.get("audio", {})
+    music_overrides = overrides.get("music", {})
     packing = PROFILES.get(target, {}).get("packing", "chunky")
     image_results: list[tuple[str, object]] = []
     placements: dict[str, object] = {}
@@ -231,6 +233,34 @@ def generate(root: Path, target: str, project=None,
             "source": result.source,
             "sample_rate": result.sample_rate,
             "duration_ms": result.duration_ms,
+        })
+        manifest["totals"]["rom_bytes"] += result.rom_bytes
+
+    for asset in project.music:
+        options = music_overrides.get(asset.name, {})
+        if options.get("skip", False):
+            continue
+        # Only SMS/Game Gear replay the SN76489 byte stream; all targets still
+        # receive the portable gr_note events in the same generated song.
+        result = process_music(asset, psg=(target == "sms"))
+        filename = _ident(asset.name) + ".c"
+        text = result.source_text
+        if target == "gb":
+            text = "#pragma bank 1\n\n" + text
+        (output / filename).write_text(text, encoding="utf-8")
+        sources.append(filename)
+        manifest["assets"].append({
+            "name": asset.name,
+            "kind": "music",
+            "bpp": 0,
+            "tile_count": 0,
+            "unique_tiles": 0,
+            "palette_colors": 0,
+            "rom_bytes": result.rom_bytes,
+            "source": result.source,
+            "notes": result.note_count,
+            "psg_bytes": result.psg_bytes,
+            "frames": result.frames,
         })
         manifest["totals"]["rom_bytes"] += result.rom_bytes
 

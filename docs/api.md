@@ -112,12 +112,22 @@ void      gr_sfx_play(uint16_t sfx_id, uint8_t channel);
 ```
 
 Music is a compiled 16th-note event stream, not a decoded audio file, so each
-target can recompile it for its sound chip. `gr_sfx_def` describes either a
-synthesized wave (square/triangle/saw/noise) or pipeline-converted PCM. The
-Game Boy backend approximates PCM SFX with a tone/noise channel; the NES
-backend also substitutes a short pulse tone because DMC playback is not yet
-implemented. SMS/GG play note streams as SN76489 tone registers on the first
-two PSG channels; PSGlib tracker data and noise/PCM playback are not wired up.
+target can recompile it for its sound chip. `gr_song` carries a trailing
+`const uint8_t *psg` member: generated songs set it to an uncompressed
+PSGlib-format stream on SMS/GG and to `NULL` elsewhere, so the same symbol
+works on every target. Hand-written four-field `gr_song` initializers remain
+valid C and leave `psg` as `NULL`. `[[music]]` scores compile to that symbol;
+see [`asset-pipeline.md`](asset-pipeline.md#music-tracker-scores).
+
+`gr_sfx_def` describes either a synthesized wave (square/triangle/saw/noise) or
+pipeline-converted PCM. The Game Boy backend approximates PCM SFX with a
+tone/noise channel; the NES backend also substitutes a short pulse tone because
+DMC playback is not yet implemented. SMS/GG play ordinary note streams as
+SN76489 tones on channel 0, while generated songs with `psg != NULL` use a small
+built-in PSGlib-format interpreter for up to four channels (three tone and one
+noise). Compressed PSG data is not supported: the player stops on any reserved
+or compression marker. Music and SFX share the PSG, so an SFX can temporarily
+override a music channel.
 
 ## Bank switching (opt-in)
 

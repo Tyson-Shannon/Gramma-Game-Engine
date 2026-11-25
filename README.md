@@ -5,9 +5,10 @@ game against a portable API; Gramma compiles native binaries per target and
 converts the same source assets into each console's native tile formats.
 
 This repository currently contains a working **Phase 2 engine** plus the first
-Phase 3 track, **Grain v1**: a statically typed, GDScript-inspired language with
+Phase 3 tracks: **Grain v1**, a statically typed, GDScript-inspired language with
 locals, user functions and fixed arrays that transpiles ahead of time to the
-portable C API (no console interpreter).
+portable C API (no console interpreter), and a **tracker music compiler** that
+turns text scores into portable song data with PSGlib output for SMS/GG.
 Included are the portable core, SDL2 PC simulator, Game Boy/GBC backend
 (GBDK-2020, MBC1/MBC3/MBC5), NES backend (cc65, NROM/MMC1/MMC3), SMS/Game Gear
 backend (SDCC + devkitSMS, Sega slot-2 mapper), opt-in banking and vblank
@@ -116,8 +117,10 @@ and 4bpp planar art. At 256x192 the VDP nametable is 32x28 tiles: background art
 occupies VRAM tiles 0-255 and sprite art 256-511. Palettes are converted to the
 SMS `00BBGGRR` CRAM byte or the Game Gear 12-bit word. Two controllers are
 read through SMSlib; the Master System has no dedicated START button, so button
-1 is used as its alias, while Game Gear uses its real START bit. Music and SFX
-play as simple SN76489 tones; PSGlib tracker data is not used yet.
+1 is used as its alias, while Game Gear uses its real START bit. Hand-written
+songs play as simple SN76489 tones; songs compiled from `[[music]]` scores carry
+an uncompressed PSGlib-format stream that the engine replays on three tone
+channels plus noise. Compressed PSG streams are not supported.
 
 `[mapper.sms]` selects 2, 4, 8 ... 64 ROM banks of 16 KB. `gr check/build/run`
 accept `--sms-rom-banks` for one-off layouts. Banks 0 and 1 are fixed; a Sega

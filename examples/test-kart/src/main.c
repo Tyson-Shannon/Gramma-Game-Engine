@@ -17,24 +17,12 @@ extern const gr_tileset altkart_tileset;
 extern const gr_tileset track_tileset;
 extern const gr_map track_map;
 extern const gr_sfx_def engine_sfx;
+/* Compiled from assets/theme.tick by the pipeline. */
+extern const gr_song theme;
 
 static gr_bg track;
 static gr_actor *karts[GR_PLAYER_COUNT];
 static bool g_prg_probe_ok;
-
-static const gr_note theme_notes[] = {
-    { 523, 4, 11, 0, GR_WAVE_SQUARE },
-    { 659, 4, 11, 0, GR_WAVE_SQUARE },
-    { 784, 4, 11, 0, GR_WAVE_SQUARE },
-    { 659, 4, 11, 0, GR_WAVE_SQUARE },
-    { 587, 4, 11, 0, GR_WAVE_TRIANGLE },
-    { 698, 4, 11, 0, GR_WAVE_TRIANGLE },
-    { 880, 8, 11, 0, GR_WAVE_TRIANGLE },
-    { 0,   4, 0,  0, GR_WAVE_SQUARE },
-};
-static const gr_song theme = {
-    160, sizeof(theme_notes) / sizeof(theme_notes[0]), theme_notes, true
-};
 
 static const gr_sfx_def *const sfx_table[] = { &engine_sfx };
 

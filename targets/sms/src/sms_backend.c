@@ -52,6 +52,12 @@ static uint16_t g_started_index;
 static uint16_t g_note_elapsed_frames;
 static uint16_t g_sfx_frames;
 
+/* Minimal PSGlib-format interpreter for compiler-generated songs. */
+static const uint8_t *g_psg_pos;
+static const uint8_t *g_psg_loop;
+static uint8_t g_psg_wait;
+static bool g_psg_active;
+
 /* A readable default palette. Games should call gr_palette_load() with their
  * generated asset palettes; these entries keep the shipped demo visible when
  * it uses the portable API without target-specific palette code. */
@@ -295,6 +301,74 @@ static void sms_start_tone(uint8_t channel, uint16_t freq, uint8_t volume)
     gr_sms_psg_port = attenuation;
 }
 
+static void sms_psg_silence(void)
+{
+    uint8_t channel;
+
+    for (channel = 0u; channel < 4u; ++channel) {
+        uint8_t shift = (uint8_t)(channel << 5);
+        gr_sms_psg_port = (uint8_t)(0x80u | shift | 0x10u);
+        gr_sms_psg_port = 0x0fu;
+    }
+}
+
+static void sms_psg_start(const uint8_t *stream)
+{
+    g_psg_pos = stream;
+    g_psg_loop = NULL;
+    g_psg_wait = 0u;
+    g_psg_active = (stream != NULL);
+}
+
+static void sms_psg_stop(void)
+{
+    g_psg_active = false;
+    g_psg_pos = NULL;
+    g_psg_loop = NULL;
+    g_psg_wait = 0u;
+    sms_psg_silence();
+}
+
+static void sms_psg_frame(void)
+{
+    if (!g_psg_active || g_psg_pos == NULL) {
+        return;
+    }
+    if (g_psg_wait > 0u) {
+        --g_psg_wait;
+        if (g_psg_wait > 0u) {
+            return;
+        }
+    }
+    while (g_psg_active) {
+        uint8_t byte = *g_psg_pos;
+        ++g_psg_pos;
+        if (byte >= 0x80u) {
+            /* 1cc t xxxx: SN76489 latch byte. */
+            gr_sms_psg_port = byte;
+        } else if (byte >= 0x40u) {
+            /* 01xx xxxx: data for the latched register. */
+            gr_sms_psg_port = (uint8_t)(byte & 0x3fu);
+        } else if (byte >= 0x38u) {
+            /* 0x38-0x3f: wait 1-8 frames. */
+            g_psg_wait = (uint8_t)((byte & 0x07u) + 1u);
+            return;
+        } else if (byte == 0x01u) {
+            g_psg_loop = g_psg_pos;
+        } else if (byte == 0x00u) {
+            if (g_psg_loop == NULL) {
+                sms_psg_stop();
+                return;
+            }
+            g_psg_pos = g_psg_loop;
+        } else {
+            /* 0x02-0x37 are reserved or compressed; v1 emits none of them. */
+            sms_psg_stop();
+            return;
+        }
+    }
+}
+
 static void sms_update_music(void)
 {
     const gr_note *note;
@@ -344,7 +418,11 @@ static void sms_frame_end(void)
     if (g_sfx_frames > 0u && --g_sfx_frames == 0u) {
         sms_start_tone(1, 0, 0);
     }
-    sms_update_music();
+    if (g_psg_active) {
+        sms_psg_frame();
+    } else {
+        sms_update_music();
+    }
 }
 
 static bool sms_pad_down(gr_player player, gr_button button)
@@ -384,10 +462,18 @@ static void sms_palette_load(uint8_t slot, const gr_color *colors,
 
 static gr_result sms_music_play(const gr_song *song)
 {
-    g_song = song;
+    sms_psg_stop();
+    g_song = NULL;
     g_note_index = 0u;
     g_started_index = 0xffffu;
     g_note_elapsed_frames = 0u;
+    if (song != NULL && song->psg != NULL) {
+        /* Generated tracker song: PSGlib-format stream owns all channels. */
+        sms_psg_start(song->psg);
+        sms_psg_frame();
+        return GR_OK;
+    }
+    g_song = song;
     if (song != NULL && song->note_count > 0u) {
         sms_start_tone(0, song->notes[0].freq_hz, song->notes[0].volume);
         g_started_index = 0u;
@@ -398,6 +484,7 @@ static gr_result sms_music_play(const gr_song *song)
 static void sms_music_stop(void)
 {
     g_song = NULL;
+    sms_psg_stop();
     sms_start_tone(0, 0, 0);
 }
 

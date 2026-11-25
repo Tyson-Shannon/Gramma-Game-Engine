@@ -253,7 +253,7 @@ class SMSMapperConfigTests(unittest.TestCase):
         self.assertEqual({a["bpp"] for a in manifest["assets"]}, {4, 0})
         self.assertTrue(all(a["packing"] == "planar"
                             for a in manifest["assets"]
-                            if a["kind"] != "audio"))
+                            if a["kind"] not in ("audio", "music")))
         self.assertEqual(check_budget(load_project(self.root), "sms",
                                       manifest), [])
 
@@ -263,7 +263,7 @@ class ProjectTests(unittest.TestCase):
         project_root = ROOT / "examples" / "test-kart"
         for target in ("pc", "gb"):
             manifest = generate(project_root, target)
-            self.assertEqual(len(manifest["assets"]), 4)
+            self.assertEqual(len(manifest["assets"]), 5)  # art + audio + music
             self.assertTrue((project_root / "generated" / target /
                              "meson.build").is_file())
             self.assertEqual(check_budget(load_project(project_root), target,

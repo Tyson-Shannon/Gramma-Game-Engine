@@ -27,6 +27,10 @@ name = "engine"              # -> const gr_sfx_def engine_sfx
 file = "assets/engine.wav"
 sample_rate = 22050
 
+[[music]]
+name = "theme"               # -> const gr_song theme
+file = "assets/theme.tick"   # text tracker score, see "Music" below
+
 [budgets.pc]
 rom_kb = 512
 vram_tiles = 1024
@@ -67,7 +71,7 @@ sources = ["src/game.grain"] # or omit to auto-discover src/*.grain
 
 `generate()` also transpiles each `[grain].sources` file into
 `generated/<target>/grain_<stem>.c` and adds it to `generated_sources`. Grain
-sources use the asset names declared by `[[image]]`/`[[audio]]` through
+sources use the asset names declared by `[[image]]`/`[[audio]]`/`[[music]]` through
 `extern` declarations, so language code and converted assets are compiled by
 the same build. v1 sources may also declare typed locals, user functions and
 fixed arrays; all of it is lowered to plain C before Meson sees the source list.
@@ -160,12 +164,69 @@ WAV input must be 8- or 16-bit mono/stereo PCM. It is resampled to the
 requested rate, converted to signed 8-bit and capped at 16,384 samples. The
 emitted `gr_sfx_def` uses `GR_WAVE_PCM`; on the PC backend the samples play
 directly, while GB, NES and SMS approximate them with tones until sample playback
-is wired up per target. SMS uses a small SN76489 tone sequencer, not PSGlib
-tracker data.
+is wired up per target. SFX share the PSG with music on SMS/GG; generated
+`[[music]]` songs use a PSGlib-format stream (see below).
 
-Music is authored as C `gr_note` arrays (16th-note ticks, frequency, volume,
-wave, channel) and compiled by the toolchain. A tracker-style music compiler is
-planned for Phase 3.
+## Music (tracker scores)
+
+`[[music]]` compiles a plain-text score into `const gr_song <name>` in
+`generated/<target>/<name>.c`. The same generated symbol can be referenced from
+C (`extern const gr_song theme;`) or Grain (`extern song theme`). Hand-written
+`gr_song` values remain valid: the generated structure's new trailing `psg`
+member defaults to `NULL` when a C initializer lists only the original fields.
+
+A score uses one row per 16th-note tick. Directives start with a keyword; `;`
+starts a comment, and `#` does so only at the start of a token so `C#4` works:
+
+| Directive | Meaning |
+|---|---|
+| `bpm <n>` | tempo, 1..65535 (default 120) |
+| `fps <n>` | console frames per second for PSG timing, 1..255 (default 50) |
+| `channels <n>` | cells per row, 1..4 (default 1); must precede all patterns |
+| `wave <name>` | `square`, `triangle`, `saw` or `noise` for portable notes (default `square`) |
+| `loop` / `loop on` / `loop off` | looping, on by default |
+| `pattern <name>` | starts a named pattern; its indented rows follow |
+| `order <name>...` | pattern play order; may repeat names |
+
+Each row has exactly `channels` whitespace-separated cells:
+
+- `-` holds the current note on that channel;
+- `off` cuts it (a rest);
+- `NOTE:VOL` triggers a note at volume 0..15, e.g. `C4:11`, `F#5:7`, `Db3:9`.
+  Notes use scientific pitch notation from `C0` to `B8` (`A4` = 440 Hz).
+
+Example (`assets/theme.tick`):
+
+```text
+bpm 160
+fps 50
+channels 2
+wave square
+
+pattern a
+    C5:11 C3:13
+    -     -
+    G5:11 -
+    off   off
+
+order a a
+```
+
+The compiler emits two representations from one score:
+
+- A portable `gr_note` event stream (lead channel 0, RLE durations in ticks,
+  `fps`-independent) for PC, GB and NES. Those backends keep their existing
+  one-note-at-a-time sequencer, so v1 polyphony is limited to the PSG stream.
+- An **uncompressed PSGlib-format byte stream** for `sms` (also used by the
+  `--gg` build): `0x01` loop marker, SN76489 latch (`1cc t xxxx`) and data
+  (`01xx xxxx`) pairs for channels 0-2 tone / 3 noise, `0x38|extra` frame waits
+  (1-8 frames) and a final `0x00`. Compressed PSG markers `0x08-0x37` are never
+  emitted and the SMS player stops if it encounters one. One row lasts
+  `max(1, round(fps * 15 / bpm))` frames.
+
+`[target.<name>.music.<asset>]` supports `skip = true` to omit a score for one
+target. Generated music files use `#pragma bank 1` on Game Boy, like images and
+SFX. The manifest records `kind: "music"` with `notes`, `psg_bytes` and `frames`.
 
 ## Budget linter
 

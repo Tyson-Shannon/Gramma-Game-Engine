@@ -29,6 +29,12 @@ class AudioAsset:
 
 
 @dataclass
+class MusicAsset:
+    name: str
+    file: Path
+
+
+@dataclass
 class Project:
     root: Path
     name: str
@@ -36,6 +42,7 @@ class Project:
     max_sprites: int = 0
     images: list[ImageAsset] = field(default_factory=list)
     audio: list[AudioAsset] = field(default_factory=list)
+    music: list[MusicAsset] = field(default_factory=list)
     budgets: dict[str, dict] = field(default_factory=dict)
     targets: dict[str, dict] = field(default_factory=dict)
     mapper: dict[str, dict] = field(default_factory=dict)
@@ -76,6 +83,11 @@ def load_project(root: Path) -> Project:
             name=item["name"],
             file=root / item["file"],
             sample_rate=int(item.get("sample_rate", 22050)),
+        ))
+    for item in data.get("music", []):
+        project.music.append(MusicAsset(
+            name=item["name"],
+            file=root / item["file"],
         ))
     grain = data.get("grain", {})
     names = grain.get("sources")

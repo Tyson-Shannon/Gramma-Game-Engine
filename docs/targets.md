@@ -124,8 +124,11 @@ vram_tiles = 384
   objects with 64 slots and an 8-per-line limit; a 2x2 actor uses four.
 - B presses stage an alternate sprite tileset at VRAM tile 256 and patch an
   8x8 nametable region through the opt-in overlay queue. VRAM writes are
-  deferred to vblank. Music/SFX use a small SN76489 tone sequencer on the
-  first two PSG channels; PSGlib tracker playback is not wired up.
+  deferred to vblank. Hand-written songs use a small SN76489 tone sequencer on
+  channel 0; songs from `[[music]]` carry an uncompressed PSGlib-format stream
+  and are played by a built-in interpreter with three tone channels and one
+  noise channel. Compressed PSG streams are not supported. Music and SFX share
+  the PSG, so an SFX can temporarily override a music channel.
 - CI checks ROM size, header signature, region/size byte, checksum and bank
   sentinels with `tests/sms_rom_check.py`. A maintained headless SMS emulator
   is not available in the CI image, so rendered-frame and hardware checks are

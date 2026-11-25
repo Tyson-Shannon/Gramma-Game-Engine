@@ -48,6 +48,13 @@ arrays into an RGB565 framebuffer; the GB backend uploads them to VRAM with
 CHR-ROM and never writes the pattern tables at runtime. This keeps the
 simulator honest: it exercises the same data a console will consume.
 
+Audio assets follow the same AOT rule. WAVs become PCM SFX definitions; text
+tracker scores become `const gr_song` objects with portable `gr_note` events and,
+for SMS/GG, an uncompressed PSGlib-format byte stream. The console never parses
+a score: the SMS backend contains a small interpreter for the generated stream,
+while other backends consume the portable notes. See
+[`asset-pipeline.md`](asset-pipeline.md#music-tracker-scores).
+
 Opt-in extension headers live under `gramma/target/<name>/`. The NES and Game
 Boy mapper headers build on the generic bank-set API in
 [`gramma/bank.h`](../core/include/gramma/bank.h); the overlay queue is another

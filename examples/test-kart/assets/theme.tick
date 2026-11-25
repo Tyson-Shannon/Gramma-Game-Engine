@@ -1,0 +1,31 @@
+; test-kart theme - Gramma tracker score v1
+; One row is a 16th-note tick. Each row has one cell per channel:
+;   NOTE:VOL  trigger a note (volume 0..15)
+;   -         hold the previous note
+;   off       cut the note
+bpm 160
+fps 50
+channels 2
+wave square
+
+pattern a
+    C5:11 C3:13
+    -     -
+    G5:11 -
+    -     -
+    E5:11 G3:13
+    -     -
+    G5:11 -
+    off   off
+
+pattern b
+    F5:11 C3:13
+    -     -
+    A4:11 A3:13
+    -     -
+    C5:11 F3:13
+    -     -
+    G4:11 -
+    off   off
+
+order a a b a b b a a
