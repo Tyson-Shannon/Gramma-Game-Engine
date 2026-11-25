@@ -21,6 +21,11 @@ class ApiDocsTests(unittest.TestCase):
         self.assertTrue(path.is_file(), "run ./tools/gr/gr docs")
         self.assertEqual(path.read_text(encoding="utf-8"), text)
 
+    def test_generated_reference_is_not_ignored(self):
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("!docs/generated/", ignore)
+        self.assertIn("!docs/generated/api-reference.md", ignore)
+
     def test_reference_indexes_public_api(self):
         text = build_api_reference(ROOT)
         for name in ("gr_init", "gr_sprite_show", "gr_overlay_flush",

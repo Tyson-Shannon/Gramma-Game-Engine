@@ -1,6 +1,9 @@
 build/
 .gr-projects/
 generated/
+# The generated API reference is committed; `gr docs --check` verifies it in CI.
+!docs/generated/
+!docs/generated/api-reference.md
 .gr-cache/
 __pycache__/
 *.pyc

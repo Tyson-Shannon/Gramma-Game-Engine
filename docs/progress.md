@@ -27,6 +27,10 @@ Short, chronological record of engine milestones. See
   `gr docs` regenerates a compact index of public functions, types and constants
   with their header comments; `gr docs --check` fails when it is stale.
   `docs/api.md` remains the hand-written narrative guide.
+- `.gitignore`: the broad `generated/` rule was suppressing
+  `docs/generated/api-reference.md`, so a fresh checkout lacked the committed
+  reference. Explicit `!docs/generated/` and `!docs/generated/api-reference.md`
+  rules keep it tracked, and `tests/test_apidocs.py` guards those rules.
 - `docker/Dockerfile`, `docker/build.sh` and `docker/README.md`: one multi-stage
   definition pins GBDK 4.6.0, cc65 2.19, SDCC 4.5.0 and devkitSMS commit
   `561bc2cb9829cdf2e31ad8cd43835037c8c44a63` by SHA-256, with matching
@@ -52,9 +56,10 @@ Short, chronological record of engine milestones. See
 
 ### Verification
 
-- Python tests: 116/116, including the new template, API-doc, Docker, LSP and
-  target-header tests. The Node adapter test now also checks LSP framing and
-  prints `VS Code Grain adapter and LSP framing OK`.
+- Python tests: 117/117, including the new template, API-doc, Docker, LSP and
+  target-header tests plus a guard that the generated reference is not ignored.
+  The Node adapter test now also checks LSP framing and prints
+  `VS Code Grain adapter and LSP framing OK`.
 - `gr docs` regenerated `docs/generated/api-reference.md` and `gr docs --check`
   reports it up to date; the generated file indexes the GB/NES/SMS system
   headers and their query functions.
@@ -73,15 +78,21 @@ Short, chronological record of engine milestones. See
   check and starter-template smoke. Checksums were computed from the downloaded
   pinned artifacts and are verified by the Dockerfile at image build time, but
   no Docker image was built here.
-- Hosted CI has not been run or reported for these DX changes, so hosted green
-  is not claimed. Physical GB/NES/SMS/GG validation remains deferred; skipped is
-  not passed. SMS/GG emulator operation remains informal/user-observed only,
-  not a formal CI or hardware result.
+- Hosted CI was run and failed the first pipeline-test step: two API-doc tests
+  reported `docs/generated/api-reference.md is missing` because the generated
+  directory was ignored by `.gitignore` and therefore absent from the fresh
+  checkout. The ignore rules were fixed and the full local CI-equivalent rerun
+  is clean with 117/117 Python tests. Hosted green is **not** claimed until a
+  rerun on the committed reference is observed or reported. Physical GB/NES/
+  SMS/GG validation remains deferred; skipped is not passed. SMS/GG emulator
+  operation remains informal/user-observed only, not a formal CI or hardware
+  result.
 
 ### Next steps
 
-1. Wait for a hosted CI result on the updated workflow and record it only when
-   it is observed or reported by the user.
+1. Commit `docs/generated/api-reference.md` together with the `.gitignore`
+   change, re-run hosted CI, and record green only when it is observed or
+   reported by the user.
 2. Optional follow-ups: build the pinned Docker images and consider adopting
    them in hosted CI, add cross-file Grain refactoring, and extend API-doc
    extraction if public headers gain new declaration shapes.
