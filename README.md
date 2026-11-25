@@ -5,8 +5,9 @@ game against a portable API; Gramma compiles native binaries per target and
 converts the same source assets into each console's native tile formats.
 
 This repository currently contains a working **Phase 2 engine** plus the first
-Phase 3 track, **Grain**: a statically typed, GDScript-inspired language that
-transpiles ahead of time to the portable C API (no console interpreter).
+Phase 3 track, **Grain v1**: a statically typed, GDScript-inspired language with
+locals, user functions and fixed arrays that transpiles ahead of time to the
+portable C API (no console interpreter).
 Included are the portable core, SDL2 PC simulator, Game Boy/GBC backend
 (GBDK-2020, MBC1/MBC3/MBC5), NES backend (cc65, NROM/MMC1/MMC3), SMS/Game Gear
 backend (SDCC + devkitSMS, Sega slot-2 mapper), opt-in banking and vblank
@@ -137,7 +138,10 @@ physical-hardware checks remain future work. See
 Write a whole game in `src/*.grain` and let `gr build` transpile it into
 C89 calls against the same portable API hand-written games use. One source
 builds for PC, GB, NES and SMS/GG; there is no runtime interpreter on the
-console. The syntax is GDScript-inspired but uses braces for blocks:
+console. v1 adds typed locals (`var n: int = 0`), typed user functions
+(`func step(dt: fixed) -> fixed { ... }`) and fixed arrays (`int[4]`,
+`[1, 2, 3, 4]`, `a[0]`) on top of the v0 declarations and handlers. The syntax is
+GDScript-inspired but uses braces for blocks:
 
 ```grain
 extern tileset kart_tileset
@@ -173,6 +177,11 @@ anything. Add `[grain] sources = [...]` to `project.toml` or rely on automatic
 `src/*.grain` discovery. The language, builtins and current limits are
 documented in [docs/grain.md](docs/grain.md).
 
+An optional VS Code extension in [`editors/vscode-grain/`](editors/vscode-grain/)
+provides `.grain` syntax highlighting and publishes the same `--check`
+diagnostics as problems on open/change/save. It shells out to the `gr` CLI;
+there is no separate language server.
+
 ## Controls (PC simulator)
 
 | Action | Player 1 | Player 2 | Gamepad |
@@ -196,6 +205,7 @@ tools/gr/             `gr` CLI: new, assets, grain, check, build, run, doctor
 pipeline/             PNG/WAV -> C arrays, target budget profiles, Grain compiler
 examples/test-kart/   shared C example game and its source assets
 examples/grain-demo/  game written entirely in Grain
+editors/vscode-grain/ VS Code syntax highlighting and --check diagnostics
 tests/                C unit tests, Python pipeline/Grain tests, emulator smokes
 docs/                 API, architecture, targets, pipeline, banking, grain, hardware validation, roadmap, progress
 ```

@@ -11,27 +11,35 @@ extern tileset track_tileset
 extern map track_map
 extern sfx engine_sfx
 
+# v1: a typed user function transpiled to a static C function.
+func kart_step(speed: fixed, dt: fixed) -> fixed {
+    return fmul(speed, dt);
+}
+
 entity Kart {
     tileset: tileset = kart_tileset;
     frame_w: int = 2;
     frame_h: int = 2;
     speed: fixed = 1.5;
     beeps: int = 0;
+    frames: int[2] = [0, 1];
 
     on_update(dt: fixed) {
+        # v1: a hoisted, typed local.
+        var step: fixed = kart_step(speed, dt);
         vx = 0;
         vy = 0;
         if (pad_down(P1, LEFT)) {
-            vx = -fmul(speed, dt);
+            vx = -step;
         }
         if (pad_down(P1, RIGHT)) {
-            vx = fmul(speed, dt);
+            vx = step;
         }
         if (pad_down(P1, UP)) {
-            vy = -fmul(speed, dt);
+            vy = -step;
         }
         if (pad_down(P1, DOWN)) {
-            vy = fmul(speed, dt);
+            vy = step;
         }
         if (pad_pressed(P1, A)) {
             sfx_play(0, 1);
@@ -43,7 +51,8 @@ entity Kart {
     }
 
     on_draw() {
-        set_frame(self, 0);
+        # v1: fixed array field with indexed access.
+        set_frame(self, frames[0]);
     }
 }
 

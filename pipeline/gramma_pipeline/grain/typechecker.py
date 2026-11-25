@@ -1,11 +1,12 @@
-"""Static type checker for Grain v0.
+"""Static type checker for Grain v1.
 
 The checker is intentionally strict where it matters (unknown names, field
-types, builtin arity, handler signatures, numeric/bool mixing) and permissive
-where C does the right thing (an ``int`` may feed a ``fixed`` parameter and is
-coerced by the code generator). Every expression is annotated with its type so
-code generation never has to guess, which is what lets ``*=`` and ``/=`` emit
-``gr_fmul``/``gr_fdiv`` instead of raw integer arithmetic.
+types, builtin/user-function arity, handler signatures, return types,
+numeric/bool mixing and fixed-size arrays) and permissive where C does the
+right thing (an ``int`` may feed a ``fixed`` parameter and is coerced by the
+code generator). Every expression is annotated with its type so code generation
+never has to guess, which is what lets ``*=`` and ``/=`` emit ``gr_fmul``/
+``gr_fdiv`` instead of raw integer arithmetic.
 """
 
 from __future__ import annotations
@@ -13,10 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .ast import (
-    Assign, Attr, Binary, Call, EntityDecl, Expr, ExprStmt, FieldDecl,
-    GameDecl, Handler, IfStmt, Literal, Name, Program, ReturnStmt, SceneDecl,
-    Stmt, Unary, WhileStmt)
+    ArrayLiteral, Assign, Attr, Binary, Call, EntityDecl, Expr, ExprStmt,
+    FieldDecl, FunctionDecl, GameDecl, Handler, IfStmt, Index, Literal, Name,
+    Program, ReturnStmt, SceneDecl, Stmt, Unary, VarDecl, WhileStmt)
 from .errors import GrainError, SourcePos
+from .types import array_parts, is_array_type, make_array_type
 
 PRIMITIVES = {"int", "fixed", "bool", "string", "tileset", "map", "sfx",
               "song"}
@@ -32,6 +34,13 @@ CONSTANTS = {
 }
 ENGINE_FIELDS = {"x": "fixed", "y": "fixed", "vx": "fixed", "vy": "fixed"}
 RESERVED_ENTITY_FIELDS = set(ENGINE_FIELDS) | {"actor"}
+C_RESERVED = {
+    "auto", "break", "case", "char", "const", "continue", "default", "do",
+    "double", "else", "enum", "extern", "float", "for", "goto", "if", "int",
+    "long", "register", "return", "short", "signed", "sizeof", "static",
+    "struct", "switch", "typedef", "union", "unsigned", "void", "volatile",
+    "while", "bool", "actor",
+}
 
 # Builtin name -> (parameter types, return type). ``entity``/``scene`` are
 # pseudo-types meaning "a value of any declared entity/scene type".
@@ -60,10 +69,11 @@ BUILTINS: dict[str, tuple[list[str], str]] = {
 
 @dataclass
 class Context:
-    kind: str                 # "entity" | "scene" | "game"
+    kind: str                 # "entity" | "scene" | "game" | "function"
     owner: object
     handler: str
     locals: dict[str, str] = field(default_factory=dict)
+    return_type: str | None = None
 
 
 class TypeChecker:
@@ -74,6 +84,7 @@ class TypeChecker:
         self.entity_fields: dict[str, dict[str, str]] = {}
         self.scene_fields: dict[str, dict[str, str]] = {}
         self.globals: dict[str, str] = {}
+        self.functions: dict[str, tuple[list[str], str]] = {}
         self.entity_names = {entity.name for entity in program.entities}
         self.scene_names = {scene.name for scene in program.scenes}
 
@@ -84,12 +95,18 @@ class TypeChecker:
             pos = getattr(node, "pos", None) or SourcePos(1, 1)
         raise GrainError(message, self.filename, pos)
 
-    def mark(self, node: Expr, type_name: str) -> str:
+    def mark(self, node: object, type_name: str) -> str:
         self.node_types[id(node)] = type_name
         return type_name
 
-    def type_of(self, node: Expr) -> str:
+    def type_of(self, node: object) -> str:
         return self.node_types.get(id(node), "error")
+
+    def check_identifier(self, name: str, node: object) -> None:
+        if name in C_RESERVED:
+            self.fail(f"'{name}' is a reserved identifier", node)
+        if name in CONSTANTS or name in BUILTINS:
+            self.fail(f"cannot redeclare '{name}'", node)
 
     @staticmethod
     def compatible(actual: str, expected: str) -> bool:
@@ -108,6 +125,49 @@ class TypeChecker:
         if not self.compatible(actual, expected):
             self.fail(f"{what}: expected {expected}, got {actual}", node)
 
+    def is_scalar(self, type_name: str) -> bool:
+        if type_name in PRIMITIVES:
+            return True
+        if type_name.startswith("entity:"):
+            return type_name[7:] in self.entity_names
+        if type_name.startswith("scene:"):
+            return type_name[6:] in self.scene_names
+        return False
+
+    def normalize_type(self, type_name: str | None) -> str | None:
+        if type_name is None:
+            return None
+        if type_name in self.entity_names:
+            return f"entity:{type_name}"
+        if type_name in self.scene_names:
+            return f"scene:{type_name}"
+        if is_array_type(type_name):
+            element, length = array_parts(type_name)
+            if element in self.entity_names:
+                element = f"entity:{element}"
+            elif element in self.scene_names:
+                element = f"scene:{element}"
+            return make_array_type(element, length)
+        return type_name
+
+    def validate_type(self, type_name: str, node: object, *,
+                      allow_array: bool = True,
+                      allow_void: bool = False) -> None:
+        if type_name == "void":
+            if allow_void:
+                return
+            self.fail("'void' is only valid as a function return type", node)
+        if is_array_type(type_name):
+            if not allow_array:
+                self.fail("arrays are only valid for fields, locals and "
+                          "array literals", node)
+            element, _length = array_parts(type_name)
+            if not self.is_scalar(element):
+                self.fail(f"unknown type '{element}'", node)
+            return
+        if not self.is_scalar(type_name):
+            self.fail(f"unknown type '{type_name}'", node)
+
     # -- entry point -------------------------------------------------------
     def check(self) -> None:
         seen: dict[str, str] = {}
@@ -119,13 +179,30 @@ class TypeChecker:
             if scene.name in seen:
                 self.fail(f"duplicate declaration '{scene.name}'", scene)
             seen[scene.name] = "scene"
+        for function in self.program.functions:
+            self.check_identifier(function.name, function)
+            if function.name in seen or function.name in self.globals \
+                    or function.name in self.functions:
+                self.fail(f"duplicate declaration '{function.name}'", function)
+            seen[function.name] = "function"
+            self.validate_type(function.return_type, function,
+                               allow_array=False, allow_void=True)
+            params: list[str] = []
+            for param_name, param_type in function.params:
+                self.check_identifier(param_name, function)
+                if param_name in params:
+                    self.fail(f"duplicate parameter '{param_name}'", function)
+                self.validate_type(param_type, function, allow_array=False)
+                params.append(self.normalize_type(param_type) or param_type)
+            self.functions[function.name] = (params, function.return_type)
 
         for extern in self.program.externs:
             if extern.type_name not in RESOURCE_TYPES:
                 self.fail(f"unknown extern type '{extern.type_name}'; "
                           f"expected {', '.join(sorted(RESOURCE_TYPES))}",
                           extern)
-            if extern.name in self.globals or extern.name in CONSTANTS:
+            self.check_identifier(extern.name, extern)
+            if extern.name in seen or extern.name in self.globals:
                 self.fail(f"duplicate identifier '{extern.name}'", extern)
             self.globals[extern.name] = extern.type_name
 
@@ -133,6 +210,8 @@ class TypeChecker:
             self.check_fields(entity, "entity")
         for scene in self.program.scenes:
             self.check_fields(scene, "scene")
+        for function in self.program.functions:
+            self.check_function(function)
         for entity in self.program.entities:
             self.check_handlers(entity, "entity")
         for scene in self.program.scenes:
@@ -140,30 +219,30 @@ class TypeChecker:
         if self.program.game is not None:
             self.check_game(self.program.game)
 
-    # -- fields and handlers ----------------------------------------------
+    # -- fields, functions and handlers -----------------------------------
     def check_fields(self, owner: EntityDecl | SceneDecl, kind: str) -> None:
         result: dict[str, str] = {}
         for decl in owner.fields:
+            self.check_identifier(decl.name, decl)
             if decl.name in result:
                 self.fail(f"duplicate field '{decl.name}' in {kind} "
                           f"'{owner.name}'", decl)
             if kind == "entity" and decl.name in RESERVED_ENTITY_FIELDS:
                 self.fail(f"'{decl.name}' is a reserved engine field", decl)
-            if decl.type_name is not None and decl.type_name not in PRIMITIVES:
-                if decl.type_name not in self.entity_names \
-                        and decl.type_name not in self.scene_names:
-                    self.fail(f"unknown type '{decl.type_name}'", decl)
-            declared = decl.type_name
-            inferred = self.check_expr(decl.init, None)
+            declared = self.normalize_type(decl.type_name)
             if declared is not None:
-                if declared in self.entity_names and not declared.startswith("entity:"):
-                    declared = f"entity:{declared}"
-                elif declared in self.scene_names and not declared.startswith("scene:"):
-                    declared = f"scene:{declared}"
+                self.validate_type(declared, decl)
+            inferred = self.check_expr(decl.init, None, declared)
+            if inferred == "void":
+                self.fail(f"field '{decl.name}' cannot have a void initializer",
+                          decl)
+            if declared is not None:
                 self.require(inferred, declared,
                              f"field '{decl.name}' initializer", decl.init)
+                decl.type_name = declared
                 result[decl.name] = declared
             else:
+                decl.type_name = inferred
                 result[decl.name] = inferred
         if kind == "entity" and result.get("tileset") != "tileset":
             self.fail(f"entity '{owner.name}' needs a "
@@ -172,6 +251,13 @@ class TypeChecker:
             self.entity_fields[owner.name] = result
         else:
             self.scene_fields[owner.name] = result
+
+    def check_function(self, function: FunctionDecl) -> None:
+        params, return_type = self.functions[function.name]
+        context = Context("function", function, function.name,
+                          dict(zip((p[0] for p in function.params), params)),
+                          return_type)
+        self.check_body(function.body, context)
 
     def check_handlers(self, owner: EntityDecl | SceneDecl, kind: str) -> None:
         expected_params = {
@@ -182,23 +268,18 @@ class TypeChecker:
             wanted = expected_params.get(name)
             if wanted is None:
                 self.fail(f"unknown handler '{name}'", handler)
-            actual = []
+            actual: list[str] = []
             for param_name, type_name in handler.params:
-                if type_name is None:
-                    self.fail(f"parameter '{param_name}' needs a type "
-                              f"annotation (e.g. '{param_name}: fixed')",
-                              handler)
-                if type_name not in PRIMITIVES:
-                    self.fail(f"unknown type '{type_name}' for parameter "
-                              f"'{param_name}'", handler)
-                actual.append(type_name)
+                self.check_identifier(param_name, handler)
+                self.validate_type(type_name, handler, allow_array=False)
+                actual.append(self.normalize_type(type_name) or type_name)
             if actual != wanted:
                 signature = ", ".join(wanted) if wanted else "no parameters"
                 self.fail(f"handler '{name}' expects {signature}, got "
                           f"{', '.join(actual) if actual else 'no parameters'}",
                           handler)
             context = Context(kind, owner, name,
-                              {p[0]: p[1] for p in handler.params})
+                              dict(zip((p[0] for p in handler.params), actual)))
             self.check_body(handler.body, context)
 
     def check_game(self, game: GameDecl) -> None:
@@ -242,9 +323,32 @@ class TypeChecker:
     def check_stmt(self, stmt: Stmt, context: Context) -> None:
         if isinstance(stmt, ExprStmt):
             self.check_expr(stmt.expr, context)
+        elif isinstance(stmt, VarDecl):
+            self.check_identifier(stmt.name, stmt)
+            if stmt.name in context.locals:
+                self.fail(f"duplicate local variable '{stmt.name}' in "
+                          f"{context.kind} '{getattr(context.owner, 'name', 'game')}'",
+                          stmt)
+            declared = self.normalize_type(stmt.type_name)
+            if declared is not None:
+                self.validate_type(declared, stmt)
+            inferred = self.check_expr(stmt.init, context, declared)
+            if inferred == "void":
+                self.fail(f"local '{stmt.name}' cannot have a void initializer",
+                          stmt)
+            resolved = declared or inferred
+            if declared is not None:
+                self.require(inferred, declared,
+                             f"local '{stmt.name}' initializer", stmt.init)
+            stmt.type_name = resolved
+            self.mark(stmt, resolved)
+            context.locals[stmt.name] = resolved
         elif isinstance(stmt, Assign):
             target_type = self.check_expr(stmt.target, context)
-            value_type = self.check_expr(stmt.value, context)
+            if is_array_type(target_type):
+                self.fail("cannot assign to a whole array; assign elements "
+                          "instead (e.g. 'a[0] = 1')", stmt)
+            value_type = self.check_expr(stmt.value, context, target_type)
             if isinstance(stmt.target, Name) and stmt.target.name in CONSTANTS:
                 self.fail(f"cannot assign to constant '{stmt.target.name}'",
                           stmt)
@@ -264,13 +368,23 @@ class TypeChecker:
                          "while condition", stmt.cond)
             self.check_body(stmt.body, context)
         elif isinstance(stmt, ReturnStmt):
-            if stmt.value is not None:
-                self.fail("handlers cannot return a value", stmt)
+            expected = context.return_type
+            if expected in (None, "void"):
+                if stmt.value is not None:
+                    self.fail("handlers and void functions cannot return a "
+                              "value", stmt)
+            elif stmt.value is None:
+                self.fail(f"function '{getattr(context.owner, 'name', '')}' "
+                          f"must return a {expected}", stmt)
+            else:
+                actual = self.check_expr(stmt.value, context, expected)
+                self.require(actual, expected, "return value", stmt.value)
         else:
             self.fail(f"unsupported statement {type(stmt).__name__}", stmt)
 
     # -- expressions -------------------------------------------------------
-    def check_expr(self, node: Expr, context: Context | None) -> str:
+    def check_expr(self, node: Expr, context: Context | None,
+                   expected: str | None = None) -> str:
         if isinstance(node, Literal):
             return self.mark(node, node.kind)
         if isinstance(node, Name):
@@ -290,13 +404,41 @@ class TypeChecker:
             return self.check_binary(node, context)
         if isinstance(node, Call):
             return self.check_call(node, context)
+        if isinstance(node, ArrayLiteral):
+            return self.check_array_literal(node, context, expected)
+        if isinstance(node, Index):
+            return self.check_index(node, context)
         self.fail(f"unsupported expression {type(node).__name__}", node)
         return "error"
+
+    def check_array_literal(self, node: ArrayLiteral, context: Context | None,
+                            expected: str | None) -> str:
+        if not expected or not is_array_type(expected):
+            self.fail("array literals need an array-typed target (e.g. "
+                      "'var a: int[2] = [1, 2]')", node)
+        element_type, length = array_parts(expected)
+        if len(node.elements) != length:
+            self.fail(f"array literal has {len(node.elements)} element(s), "
+                      f"expected {length}", node)
+        for element in node.elements:
+            actual = self.check_expr(element, context, element_type)
+            self.require(actual, element_type, "array element", element)
+        return self.mark(node, expected)
+
+    def check_index(self, node: Index, context: Context | None) -> str:
+        obj_type = self.check_expr(node.obj, context)
+        if not is_array_type(obj_type):
+            self.fail("can only index a fixed-size array", node)
+        index_type = self.check_expr(node.index, context, "int")
+        if index_type != "int":
+            self.fail(f"array index must be an int, got {index_type}", node)
+        element_type, _length = array_parts(obj_type)
+        return self.mark(node, element_type)
 
     def check_name(self, node: Name, context: Context | None) -> str:
         name = node.name
         if name == "self":
-            if context is None or context.kind == "game":
+            if context is None or context.kind in {"game", "function"}:
                 self.fail("'self' is only available inside handlers", node)
             if context.kind == "entity":
                 return self.mark(node, f"entity:{context.owner.name}")
@@ -315,6 +457,8 @@ class TypeChecker:
             return self.mark(node, self.globals[name])
         if name in CONSTANTS:
             return self.mark(node, CONSTANTS[name])
+        if name in self.functions:
+            self.fail(f"'{name}' is a function; call it as '{name}(...)'", node)
         if name in self.entity_names or name in self.scene_names:
             self.fail(f"'{name}' is a type name, not a value", node)
         self.fail(f"unknown identifier '{name}'", node)
@@ -322,9 +466,9 @@ class TypeChecker:
 
     def check_attr(self, node: Attr, context: Context | None) -> str:
         if not isinstance(node.obj, Name) or node.obj.name != "self":
-            self.fail("only 'self.field' access is supported in Grain v0",
+            self.fail("only 'self.field' access is supported in Grain v1",
                       node)
-        if context is None or context.kind == "game":
+        if context is None or context.kind in {"game", "function"}:
             self.fail("'self' is only available inside handlers", node)
         fields = (self.entity_fields if context.kind == "entity"
                   else self.scene_fields)
@@ -348,7 +492,7 @@ class TypeChecker:
             numeric = {"int", "fixed"}
             if left in numeric and right in numeric:
                 return self.mark(node, "bool")
-            if op in {"==", "!="} and left == right:
+            if op in {"==", "!="} and left == right and not is_array_type(left):
                 return self.mark(node, "bool")
             self.fail(f"cannot compare {left} with {right}", node)
         if op in {"+", "-", "*", "/"}:
@@ -361,6 +505,16 @@ class TypeChecker:
 
     def check_call(self, node: Call, context: Context | None) -> str:
         name = node.callee
+        if name in self.functions:
+            params, result = self.functions[name]
+            if len(node.args) != len(params):
+                self.fail(f"{name}() expects {len(params)} argument(s), got "
+                          f"{len(node.args)}", node)
+            for index, (arg, expected) in enumerate(zip(node.args, params)):
+                actual = self.check_expr(arg, context, expected)
+                self.require(actual, expected,
+                             f"{name}() argument {index + 1}", arg)
+            return self.mark(node, result)
         if name == "spawn":
             if len(node.args) != 3:
                 self.fail("spawn() expects (EntityType, x, y)", node)
@@ -382,7 +536,7 @@ class TypeChecker:
             self.mark(target, f"scene:{target.name}")
             return self.mark(node, "void")
         if name not in BUILTINS:
-            self.fail(f"unknown builtin function '{name}'", node)
+            self.fail(f"unknown function '{name}'", node)
         params, result = BUILTINS[name]
         if len(node.args) != len(params):
             self.fail(f"{name}() expects {len(params)} argument(s), got "
@@ -396,7 +550,7 @@ class TypeChecker:
                 self.fail("scroll() needs a scene with 'background: map' and "
                           "'tileset: tileset' fields", node)
         for index, (arg, expected) in enumerate(zip(node.args, params)):
-            actual = self.check_expr(arg, context)
+            actual = self.check_expr(arg, context, expected)
             self.require(actual, expected,
                          f"{name}() argument {index + 1}", arg)
         return self.mark(node, result)

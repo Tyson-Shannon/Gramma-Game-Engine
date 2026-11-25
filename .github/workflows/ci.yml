@@ -29,6 +29,9 @@ jobs:
       - name: Pipeline tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
 
+      - name: VS Code Grain adapter test
+        run: node editors/vscode-grain/test.js
+
       - name: Grain syntax and typecheck
         run: ./tools/gr/gr grain --check --project examples/grain-demo
 

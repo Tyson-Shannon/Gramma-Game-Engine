@@ -1,0 +1,54 @@
+{
+  "name": "grain-gramma",
+  "displayName": "Grain (Gramma)",
+  "description": "Syntax highlighting and gr grain --check diagnostics for Grain (.grain) files.",
+  "version": "0.1.0",
+  "publisher": "gramma",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:grain"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "grain",
+        "aliases": [
+          "Grain",
+          "grain"
+        ],
+        "extensions": [
+          ".grain"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "grain",
+        "scopeName": "source.grain",
+        "path": "./syntaxes/grain.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Grain",
+      "properties": {
+        "grain.cliPath": {
+          "type": "string",
+          "default": "tools/gr/gr",
+          "description": "Path to the gr CLI, relative to the workspace or the Grain project root."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node test.js"
+  }
+}

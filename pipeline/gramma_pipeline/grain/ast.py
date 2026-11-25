@@ -1,6 +1,6 @@
-"""AST nodes for Grain v0.
+"""AST nodes for Grain v1.
 
-The grammar is deliberately small: declarations (extern/entity/scene/game),
+The grammar is deliberately small: declarations (extern/func/entity/scene/game),
 typed fields, handlers and a statement/expression subset that maps one-to-one
 onto the portable C API. Locations are kept on every node so diagnostics from
 later phases can point back at source text.
@@ -58,7 +58,21 @@ class Attr:
     pos: SourcePos
 
 
-Expr = Literal | Name | Unary | Binary | Call | Attr
+@dataclass
+class ArrayLiteral:
+    elements: list["Expr"] = field(default_factory=list)
+    pos: SourcePos | None = None
+
+
+@dataclass
+class Index:
+    obj: "Expr"
+    index: "Expr"
+    pos: SourcePos | None = None
+
+
+Expr = (Literal | Name | Unary | Binary | Call | Attr | ArrayLiteral |
+        Index)
 
 
 # ---- Statements ----------------------------------------------------------
@@ -97,7 +111,15 @@ class ReturnStmt:
     pos: SourcePos | None = None
 
 
-Stmt = Assign | ExprStmt | IfStmt | WhileStmt | ReturnStmt
+@dataclass
+class VarDecl:
+    name: str
+    init: Expr
+    type_name: str | None = None
+    pos: SourcePos | None = None
+
+
+Stmt = Assign | ExprStmt | IfStmt | WhileStmt | ReturnStmt | VarDecl
 
 
 # ---- Declarations --------------------------------------------------------
@@ -142,6 +164,15 @@ class SceneDecl:
 
 
 @dataclass
+class FunctionDecl:
+    name: str
+    params: list[tuple[str, str]] = field(default_factory=list)
+    return_type: str = "void"
+    body: list[Stmt] = field(default_factory=list)
+    pos: SourcePos | None = None
+
+
+@dataclass
 class GameDecl:
     settings: dict[str, Any] = field(default_factory=dict)
     handlers: dict[str, Handler] = field(default_factory=dict)
@@ -151,6 +182,7 @@ class GameDecl:
 @dataclass
 class Program:
     externs: list[ExternDecl] = field(default_factory=list)
+    functions: list[FunctionDecl] = field(default_factory=list)
     entities: list[EntityDecl] = field(default_factory=list)
     scenes: list[SceneDecl] = field(default_factory=list)
     game: GameDecl | None = None

@@ -12,12 +12,13 @@ from dataclasses import dataclass
 from .errors import GrainError, SourcePos
 
 KEYWORDS = {
-    "entity", "scene", "game", "extern", "on_spawn", "on_update",
-    "on_draw", "on_load", "on_unload", "on_init", "if", "elif", "else",
-    "while", "return", "self", "true", "false", "and", "or", "not",
+    "entity", "scene", "game", "extern", "func", "var", "on_spawn",
+    "on_update", "on_draw", "on_load", "on_unload", "on_init", "if",
+    "elif", "else", "while", "return", "self", "true", "false", "and",
+    "or", "not",
 }
 
-TWO_CHAR_OPS = {"+=", "-=", "*=", "/=", "==", "!=", "<=", ">="}
+TWO_CHAR_OPS = {"+=", "-=", "*=", "/=", "==", "!=", "<=", ">=", "->"}
 ONE_CHAR_OPS = set("+-*/=<>(){}[],:.;")
 
 

@@ -4,6 +4,65 @@ Short, chronological record of engine milestones. See
 [`roadmap.md`](roadmap.md) for the living plan and
 [`banking.md`](banking.md) for the bank abstraction design.
 
+## 2026-11-24 - Grain v1 and VS Code extension shipped
+
+### Progress
+
+- Extended Grain from v0 to v1 with the three most-requested language features:
+  typed local variables, typed user functions and fixed-size arrays. The AOT
+  contract is unchanged: the same `grain_<name>.c` translation unit is emitted
+  and compiled by every backend, with no console interpreter.
+- Shipped a thin VS Code extension for `.grain` files: syntax highlighting plus
+  diagnostics from `gr grain --check`. It is an adapter, not a language server.
+
+### Changes
+
+- `pipeline/gramma_pipeline/grain/types.py` centralises `T[N]` type parsing;
+  `ast.py`, `lexer.py` and `parser.py` add `var`, `func`, `->`, array literals
+  and indexing. `typechecker.py` resolves function signatures, return types,
+  locals, array lengths/element types and index types; `codegen.py` emits
+  `static grain_fn_*` functions with prototypes before handlers and hoists all
+  C89 declarations to function starts. `always_returns()` suppresses the
+  fallback return when every `if`/`else` path already returns.
+- Added `editors/vscode-grain/`: `package.json`, language configuration,
+  TextMate grammar, `extension.js`, `diagnostics.js`, `test.js` and a README.
+  The extension finds the enclosing `project.toml`, runs the project's `gr`
+  CLI and maps `file:line:col` errors to VS Code problems on open/change/save.
+- `examples/grain-demo/src/game.grain` now exercises `func kart_step(...)`,
+  a hoisted local and `frames: int[2] = [0, 1]` with `frames[0]` on draw.
+- CI gained a `node editors/vscode-grain/test.js` step (mirrored in the local
+  CI-equivalent script). `docs/grain.md`, `README.md`, API, architecture,
+  asset-pipeline, roadmap and this log describe v1 and the extension; the
+  roadmap now lists Grain v1/editor as done.
+
+### Verification
+
+- Python tests: 71/71, including v1 parser/typechecker/codegen cases, negative
+  diagnostics, the VS Code manifest/grammar checks and the Node diagnostics
+  adapter smoke (`VS Code Grain diagnostics OK`).
+- Generated v1 C passes `gcc -std=c89 -pedantic -Wall -Wextra -fsyntax-only
+  -Icore/include` in unit tests. `gr grain --check --project examples/grain-demo`
+  passes; the demo builds for PC, GB, NES, SMS and Game Gear (`--gg`) with no
+  `warning 126: unreachable code`; the known devkitSMS `sdcccall` linker ABI
+  warnings remain unchanged. Headless PC smoke exits 0.
+- `.github/workflows/ci.yml` parses cleanly (one job, 34 steps, including the
+  VS Code adapter test). A full CI-equivalent pass was re-run locally: all
+  stages green (71 Python tests, Meson C tests, PC/GB/NES emulator smokes,
+  SMS/GG structural ROM checks and every Grain demo build).
+- Physical hardware validation stays deferred; skipped is not recorded as
+  passed. SMS/GG rendered-frame checking remains informal/user-observed only,
+  not a formal CI or hardware result. Hosted CI for these v1/editor changes has
+  not been observed locally; the earlier hosted green was reported for the
+  v0/Gymnasium state.
+
+### Next steps
+
+1. Confirm hosted CI with the new VS Code adapter step and the v1 demo source.
+2. Keep physical hardware and formal SMS/GG rendered-frame validation pending as
+   recorded in the roadmap and hardware checklist.
+3. Continue other Phase 3 tracks (tracker music/PSGlib, Tiled maps, templates,
+   Docker); a full Grain language server can build on the thin adapter above.
+
 ## 2026-11-24 - NES emulator CI migrated to Gymnasium
 
 ### Progress
@@ -36,7 +95,8 @@ Short, chronological record of engine milestones. See
 
 ### Next steps
 
-1. Confirm the hosted NES emulator smoke step passes with the new dependency.
+1. Hosted CI, including the NES emulator smoke with `nes-py>=9`, was reported
+   green; the local CI-equivalent pass agrees.
 2. Keep the Grain and hardware follow-ups from the entry below in progress.
 
 ## 2026-11-24 - Grain language toolchain shipped (Phase 3 track 1)
@@ -95,8 +155,9 @@ Short, chronological record of engine milestones. See
 
 ### Next steps
 
-1. Confirm the six new Grain steps pass in hosted GitHub Actions after the next
-   push; the equivalent script already passes locally.
+1. Hosted GitHub Actions CI was reported green, including the six new Grain
+   steps and the Gymnasium-based NES emulator smoke. This is a user-reported
+   hosted result; locally the equivalent script also passes.
 2. Extend Grain with local variables, user functions, arrays and editor
    diagnostics; add a VS Code syntax/diagnostic extension.
 3. Continue other Phase 3 tracks (tracker music/PSGlib, Tiled maps, templates,

@@ -13,11 +13,16 @@ an entity handler emits `gr_sprite_show(&self->actor->sprite, ...)`, `spawn()`
 emits `gr_actor_spawn(&def)`, fixed-point operators emit `gr_fmul`/`gr_fdiv`,
 and the generated `game_init`/`game_update`/`game_draw` functions become the
 `gr_config` callbacks. The output is C89-clean so every backend consumes it.
+Grain v1 adds typed locals, typed user functions (emitted as static
+`grain_fn_<name>()` C functions) and fixed arrays (`T[N]`, `[...]`, `a[i]`);
+declarations are hoisted to function starts so cc65/SDCC accept the output.
 
 Use `gr grain --check` for diagnostics (`file:line:col: error: message`) and
-`gr build` to compile the generated C. `examples/grain-demo/` is a complete
-game written only in Grain. Full syntax, builtins and limits are in
-[`grain.md`](grain.md).
+`gr build` to compile the generated C. The optional
+[`editors/vscode-grain/`](../editors/vscode-grain/) extension surfaces the same
+diagnostics in the editor without adding a runtime dependency.
+`examples/grain-demo/` is a complete game written only in Grain. Full syntax,
+builtins and limits are in [`grain.md`](grain.md).
 
 ## Lifecycle
 

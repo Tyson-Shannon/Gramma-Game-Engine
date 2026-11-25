@@ -64,29 +64,28 @@ Against `Gramma_Engine___Technical_Plan.md`:
 - Budget linter v0: ROM, VRAM, palette, sprite and nametable checks.
 - `gr` CLI: `new`, `assets`, `grain`/`transpile`, `check`, `build`, `run`,
   `clean`, `targets`, `doctor`, with zero-sudo toolchain bootstrapping.
-- Grain language v0 (Phase 3): lexer, brace-delimited recursive-descent parser,
+- Grain language v1 (Phase 3): lexer, brace-delimited recursive-descent parser,
   static typechecker with source locations, and an AOT C89 transpiler that emits
   entity pools, scenes, handlers, `gr_config` and `main()` against the portable
-  API. Integrated into `generate()`/`gr build`; `gr grain --check` reports
-  diagnostics and `examples/grain-demo/` builds one Grain game for PC, GB, NES
-  and SMS/GG. No runtime interpreter ships. The VS Code extension is not done.
-  See [`grain.md`](grain.md).
+  API. v1 adds typed locals (`var`), typed user functions (`func ... ->`), fixed
+  arrays (`T[N]`, `[...]`, `a[i]`) and C89 declaration hoisting. Integrated into
+  `generate()`/`gr build`; `gr grain --check` reports diagnostics and
+  `examples/grain-demo/` builds one Grain game for PC, GB, NES and SMS/GG. No
+  runtime interpreter ships. A thin VS Code extension highlights `.grain` files
+  and surfaces `--check` diagnostics. See [`grain.md`](grain.md).
 - Example "test-kart": scrolling background, animated two-player sprites,
   music and SFX from one source tree.
 - Tests: C fixed-point, bank-abstraction, GB/SMS mapper and overlay unit tests,
-  Python pipeline/budget/mapper tests, headless simulator smoke test, GB/NES/SMS
-  ROM structure checks and PyBoy/`nes-py` emulator smoke tests in CI for
-  rendering, sprites, scrolling and banked art. SMS/GG CI verifies ROM structure
-  because no maintained headless SMS emulator is available in the CI image.
+  Python pipeline/budget/mapper/Grain tests (including a Node smoke test of the
+  VS Code diagnostics adapter), headless simulator smoke test, GB/NES/SMS ROM
+  structure checks and PyBoy/`nes-py` emulator smoke tests in CI for rendering,
+  sprites, scrolling and banked art. SMS/GG CI verifies ROM structure because no
+  maintained headless SMS emulator is available in the CI image.
 
 ## Not done (from the plan)
 
 - **Phase 0 hardware notes**: hand-written NES/Genesis demo programs from the
   plan were not created; the shared `test-kart` example exercises both targets.
-- **Grain editor integration**: the command-line compiler exists and
-  `gr grain --check` reports `file:line:col` diagnostics, but no VS Code syntax
-  highlighting or diagnostic adapter is shipped yet. Language v0 also has no
-  local variables, user functions, arrays, signals or `for` loops.
 - **Additional backends**: Genesis, GBA and SNES. Budget profiles and target
   selection hooks are in place, but no backend code. SMS/GG is implemented and
   structurally verified.
@@ -100,8 +99,8 @@ Against `Gramma_Engine___Technical_Plan.md`:
   skipped for now. Emulator CI remains the verification gate; skipped is not
   recorded as passed.
 - Tiled `.tmx` import, tracker music compiler, more per-target extension
-  headers, Docker toolchain images, VS Code extension, performance guides and
-  community beta.
+  headers, Docker toolchain images, a full Grain language server (completion,
+  rename, refactoring), performance guides and community beta.
 - CI matrix covers PC, GB and NES builds plus emulator smokes, and SMS/GG builds
   plus structural ROM checks, not six toolchains. It also checks Grain sources
   and builds `examples/grain-demo/` for all four targets. SMS rendered-frame
@@ -117,10 +116,11 @@ cart; emulator passes are not recorded as hardware results.
 1. **SMS/GG runtime validation:** add a maintained headless SMS emulator or a
    manual emulator pass that confirms rendered frames, the B overlay and the
    bank-2 probe. Keep structural ROM checks as the CI gate until then.
-2. **Phase 3 tooling:** extend Grain with local variables, user functions and
-   editor integration; add a tracker music compiler (including PSGlib output for
-   SMS/GG), Tiled `.tmx` import and Docker toolchain images. Revisit the CI
-   matrix once more toolchains are available.
+2. **Phase 3 tooling:** add a tracker music compiler (including PSGlib output
+   for SMS/GG), Tiled `.tmx` import and Docker toolchain images. A full Grain
+   language server can build on the thin VS Code CLI adapter if completion,
+   rename and refactoring are wanted. Revisit the CI matrix once more
+   toolchains are available.
 3. **Physical hardware (later):** when hardware and carts are available, run the
    manual checklist, record date/tester/hardware/ROM hash/result in its results
    table, and summarise the outcome in [`progress.md`](progress.md).

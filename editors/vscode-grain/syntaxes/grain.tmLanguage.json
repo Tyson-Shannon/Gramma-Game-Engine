@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Grain",
+  "scopeName": "source.grain",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#builtins" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.grain",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.grain",
+          "match": "(#|//).*$"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.grain",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "name": "constant.character.escape.grain", "match": "\\\\." }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.fixed.grain",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.grain",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.grain",
+          "match": "\\b(if|elif|else|while|return|and|or|not)\\b"
+        },
+        {
+          "name": "keyword.declaration.grain",
+          "match": "\\b(entity|scene|game|extern|func|var|on_spawn|on_update|on_draw|on_load|on_unload|on_init)\\b"
+        },
+        {
+          "name": "keyword.other.grain",
+          "match": "\\b(self|true|false)\\b"
+        }
+      ]
+    },
+    "types": {
+      "name": "support.type.grain",
+      "match": "\\b(int|fixed|bool|string|tileset|map|sfx|song|void)\\b"
+    },
+    "constants": {
+      "name": "constant.language.grain",
+      "match": "\\b(P1|P2|UP|DOWN|LEFT|RIGHT|A|B|X|Y|L|R|START|SELECT|SCREEN_W|SCREEN_H)\\b"
+    },
+    "builtins": {
+      "name": "support.function.builtin.grain",
+      "match": "\\b(itof|ftoi|fmul|fdiv|fclamp|pad_down|pad_pressed|pad_released|sfx_play|music_play|music_stop|show|hide|set_frame|set_flip|scroll|destroy|spawn|load_scene|request_quit|quit_requested)\\b(?=\\s*\\()"
+    },
+    "operators": {
+      "name": "keyword.operator.grain",
+      "match": "(->|\\+=|-=|\\*=|/=|==|!=|<=|>=|[-+*/=<])"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.block.grain",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.definition.list.grain",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.definition.parameters.grain",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.separator.grain",
+          "match": "[,;:.]"
+        }
+      ]
+    }
+  }
+}

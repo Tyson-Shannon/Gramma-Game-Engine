@@ -69,7 +69,9 @@ sources = ["src/game.grain"] # or omit to auto-discover src/*.grain
 `generated/<target>/grain_<stem>.c` and adds it to `generated_sources`. Grain
 sources use the asset names declared by `[[image]]`/`[[audio]]` through
 `extern` declarations, so language code and converted assets are compiled by
-the same build. See [`grain.md`](grain.md).
+the same build. v1 sources may also declare typed locals, user functions and
+fixed arrays; all of it is lowered to plain C before Meson sees the source list.
+See [`grain.md`](grain.md).
 
 PNG dimensions must be multiples of 8. Index 0 is reserved for transparency;
 the remaining colours are chosen from the most frequent opaque colours, capped

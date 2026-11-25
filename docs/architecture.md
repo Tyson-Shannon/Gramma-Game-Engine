@@ -20,9 +20,12 @@
 ```
 
 The Grain compiler is host-only: it parses and typechecks `.grain` sources and
-emits C89 into the same generated directory as converted assets. It adds no
-runtime component to `core/`; generated entity/scene handlers call the portable
-API exactly as hand-written C does. See [`grain.md`](grain.md).
+emits C89 into the same generated directory as converted assets. v1 locals,
+user functions and fixed arrays are lowered to C89 constructs before output;
+there is still no runtime component in `core/` and generated entity/scene
+handlers call the portable API exactly as hand-written C does. A thin
+[VS Code extension](../editors/vscode-grain/) runs `gr grain --check` for
+diagnostics but is not part of the build. See [`grain.md`](grain.md).
 
 The core owns the frame loop, actor pool, scene pointer, input/audio/palette
 dispatch, fixed-point math, the cached bank-set layer and the optional vblank

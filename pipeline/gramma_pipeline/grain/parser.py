@@ -1,33 +1,39 @@
-"""Recursive-descent parser for Grain v0.
+"""Recursive-descent parser for Grain v1.
 
 Grammar (informal)::
 
-    program    := (extern | entity | scene | game)*
+    program    := (extern | func | entity | scene | game)*
     extern     := 'extern' IDENT IDENT ';'?
+    func       := 'func' IDENT '(' params? ')' '->' type block
     entity     := 'entity' IDENT '{' member* '}'
     scene      := 'scene'  IDENT '{' member* '}'
     game       := 'game' '{' (setting | handler)* '}'
     member     := handler | field
-    field      := IDENT (':' IDENT)? '=' expr ';'?
+    field      := IDENT (':' type)? '=' expr ';'?
+    type       := IDENT ('[' INT ']')?
     handler    := ('on_spawn'|'on_update'|'on_draw'|'on_load'|'on_unload'
-                  |'on_init') '(' params? ')' block
-    params     := IDENT (':' IDENT)? (',' IDENT (':' IDENT)?)*
+                   |'on_init') '(' params? ')' block
+    params     := IDENT ':' type (',' IDENT ':' type)*
     setting    := IDENT '=' (INT | STRING | '[' IDENT (',' IDENT)* ']') ';'?
     block      := '{' stmt* '}'
-    stmt       := if | while | return | assign | expr_stmt
+    stmt       := var | if | while | return | assign | expr_stmt
+    var        := 'var' IDENT (':' type)? '=' expr ';'?
 
-Expressions use conventional precedence and support calls, attribute access,
-unary `-`/`not` and the usual arithmetic/comparison/logical operators.
+Expressions use conventional precedence, support calls, attribute access,
+``a[i]`` indexing, fixed array literals, unary ``-``/``not`` and the usual
+arithmetic/comparison/logical operators.
 """
 
 from __future__ import annotations
 
 from .ast import (
-    Assign, Attr, Binary, Call, EntityDecl, ExternDecl, Expr, ExprStmt,
-    FieldDecl, GameDecl, Handler, IfStmt, Literal, Name, Program, ReturnStmt,
-    SceneDecl, Stmt, Unary, WhileStmt)
+    ArrayLiteral, Assign, Attr, Binary, Call, EntityDecl, ExternDecl, Expr,
+    ExprStmt, FieldDecl, FunctionDecl, GameDecl, Handler, IfStmt, Index,
+    Literal, Name, Program, ReturnStmt, SceneDecl, Stmt, Unary, VarDecl,
+    WhileStmt)
 from .errors import GrainError, SourcePos
 from .lexer import Token, tokenize
+from .types import make_array_type
 
 ASSIGN_OPS = {"=", "+=", "-=", "*=", "/="}
 
@@ -84,6 +90,22 @@ class Parser:
         if self.at("OP", ":"):
             self.advance()
 
+    # -- types -------------------------------------------------------------
+    def parse_type(self) -> str:
+        base = str(self.expect("IDENT").value)
+        if not self.at("OP", "["):
+            return base
+        open_token = self.advance()
+        length_token = self.expect("INT")
+        length = int(length_token.value)
+        if length <= 0:
+            raise self.error("array length must be positive", length_token)
+        self.expect("OP", "]")
+        if self.at("OP", "["):
+            raise self.error("multidimensional arrays are not supported in "
+                             "Grain v1", self.peek())
+        return make_array_type(base, length)
+
     # -- program -----------------------------------------------------------
     def parse_program(self) -> Program:
         pos = self.peek().pos
@@ -91,6 +113,8 @@ class Parser:
         while self.peek().kind != "EOF":
             if self.at("KW", "extern"):
                 program.externs.append(self.parse_extern())
+            elif self.at("KW", "func"):
+                program.functions.append(self.parse_function())
             elif self.at("KW", "entity"):
                 program.entities.append(self.parse_entity())
             elif self.at("KW", "scene"):
@@ -101,7 +125,7 @@ class Parser:
                 program.game = self.parse_game()
             else:
                 raise self.error(
-                    f"expected 'extern', 'entity', 'scene' or 'game', "
+                    f"expected 'extern', 'func', 'entity', 'scene' or 'game', "
                     f"got {self._describe(self.peek())}")
         return program
 
@@ -111,6 +135,37 @@ class Parser:
         name = self.expect("IDENT").value
         self.optional_semicolon()
         return ExternDecl(str(type_name), str(name), token.pos)
+
+    def parse_params(self) -> list[tuple[str, str]]:
+        params: list[tuple[str, str]] = []
+        while not self.at("OP", ")"):
+            name = str(self.expect("IDENT").value)
+            if self.at("OP", ":"):
+                self.advance()
+                type_name = self.parse_type()
+            else:
+                self.fail_missing_annotation(name)
+            params.append((name, type_name))
+            if self.at("OP", ","):
+                self.advance()
+                continue
+            break
+        self.expect("OP", ")")
+        return params
+
+    def fail_missing_annotation(self, name: str) -> None:
+        raise self.error(f"parameter '{name}' needs a type annotation "
+                         f"(e.g. '{name}: int')")
+
+    def parse_function(self) -> FunctionDecl:
+        token = self.expect("KW", "func")
+        name = str(self.expect("IDENT").value)
+        self.expect("OP", "(")
+        params = self.parse_params()
+        self.expect("OP", "->")
+        return_type = self.parse_type()
+        body = self.parse_block()
+        return FunctionDecl(name, params, return_type, body, token.pos)
 
     def parse_entity(self) -> EntityDecl:
         token = self.expect("KW", "entity")
@@ -158,7 +213,7 @@ class Parser:
         type_name = None
         if self.at("OP", ":"):
             self.advance()
-            type_name = str(self.expect("IDENT").value)
+            type_name = self.parse_type()
         self.expect("OP", "=")
         init = self.parse_expression()
         self.optional_semicolon()
@@ -168,19 +223,7 @@ class Parser:
         token = self.expect("KW")
         name = str(token.value)
         self.expect("OP", "(")
-        params: list[tuple[str, str | None]] = []
-        while not self.at("OP", ")"):
-            param = str(self.expect("IDENT").value)
-            type_name = None
-            if self.at("OP", ":"):
-                self.advance()
-                type_name = str(self.expect("IDENT").value)
-            params.append((param, type_name))
-            if self.at("OP", ","):
-                self.advance()
-                continue
-            break
-        self.expect("OP", ")")
+        params = self.parse_params()
         body = self.parse_block()
         return Handler(name, body, params, token.pos)
 
@@ -238,6 +281,8 @@ class Parser:
         return statements
 
     def parse_statement(self) -> Stmt:
+        if self.at("KW", "var"):
+            return self.parse_var_decl()
         if self.at("KW", "if"):
             return self.parse_if()
         if self.at("KW", "while"):
@@ -253,14 +298,27 @@ class Parser:
         expression = self.parse_expression()
         if self.peek().kind == "OP" and self.peek().value in ASSIGN_OPS:
             op = str(self.advance().value)
-            if not isinstance(expression, (Name, Attr)):
-                raise self.error("assignment target must be a variable or field",
+            if not isinstance(expression, (Name, Attr, Index)):
+                raise self.error("assignment target must be a variable, field "
+                                 "or array element",
                                  expression.pos or self.peek().pos)
             value = self.parse_expression()
             self.optional_semicolon()
             return Assign(expression, op, value, expression.pos or self.peek().pos)
         self.optional_semicolon()
         return ExprStmt(expression, expression.pos or self.peek().pos)
+
+    def parse_var_decl(self) -> VarDecl:
+        token = self.expect("KW", "var")
+        name = str(self.expect("IDENT").value)
+        type_name = None
+        if self.at("OP", ":"):
+            self.advance()
+            type_name = self.parse_type()
+        self.expect("OP", "=")
+        init = self.parse_expression()
+        self.optional_semicolon()
+        return VarDecl(name, init, type_name, token.pos)
 
     def parse_if(self) -> IfStmt:
         token = self.expect("KW", "if")
@@ -341,10 +399,19 @@ class Parser:
 
     def parse_postfix(self) -> Expr:
         node = self.parse_primary()
-        while self.at("OP", "."):
-            token = self.advance()
-            name = str(self.expect("IDENT").value)
-            node = Attr(node, name, token.pos)
+        while True:
+            if self.at("OP", "."):
+                token = self.advance()
+                name = str(self.expect("IDENT").value)
+                node = Attr(node, name, token.pos)
+                continue
+            if self.at("OP", "["):
+                token = self.advance()
+                index = self.parse_expression()
+                self.expect("OP", "]")
+                node = Index(node, index, token.pos)
+                continue
+            break
         return node
 
     def parse_primary(self) -> Expr:
@@ -364,6 +431,21 @@ class Parser:
         if self.at("KW", "self"):
             self.advance()
             return Name("self", token.pos)
+        if self.at("OP", "["):
+            self.advance()
+            elements: list[Expr] = []
+            if not self.at("OP", "]"):
+                while True:
+                    elements.append(self.parse_expression())
+                    if self.at("OP", ","):
+                        self.advance()
+                        continue
+                    break
+            self.expect("OP", "]")
+            if not elements:
+                raise self.error("empty array literals are not supported in "
+                                 "Grain v1", token)
+            return ArrayLiteral(elements, token.pos)
         if token.kind == "IDENT":
             self.advance()
             if self.at("OP", "("):
@@ -375,7 +457,7 @@ class Parser:
                         self.advance()
                         continue
                     break
-                close = self.expect("OP", ")")
+                self.expect("OP", ")")
                 return Call(str(token.value), args, token.pos)
             return Name(str(token.value), token.pos)
         if self.at("OP", "("):
