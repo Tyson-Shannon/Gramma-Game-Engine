@@ -6,6 +6,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .schema import PROJECT_SCHEMA_VERSION
+
 
 @dataclass
 class ImageAsset:
@@ -48,6 +50,7 @@ class MapAsset:
 class Project:
     root: Path
     name: str
+    schema_version: int = PROJECT_SCHEMA_VERSION
     default_target: str = "pc"
     max_sprites: int = 0
     images: list[ImageAsset] = field(default_factory=list)
@@ -68,9 +71,18 @@ def load_project(root: Path) -> Project:
         data = tomllib.load(handle)
 
     meta = data.get("project", {})
+    try:
+        schema_version = int(meta.get("schema_version", 1))
+    except (TypeError, ValueError) as error:
+        raise ValueError("project.schema_version must be an integer") from error
+    if schema_version > PROJECT_SCHEMA_VERSION:
+        raise ValueError(
+            f"project.toml schema version {schema_version} is newer than "
+            f"supported version {PROJECT_SCHEMA_VERSION}")
     project = Project(
         root=root,
         name=meta.get("name", root.name),
+        schema_version=schema_version,
         default_target=meta.get("default_target", "pc"),
         max_sprites=int(meta.get("max_sprites", 0)),
         budgets=data.get("budgets", {}),

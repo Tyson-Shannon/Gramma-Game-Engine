@@ -4,6 +4,115 @@ Short, chronological record of engine milestones. See
 [`roadmap.md`](roadmap.md) for the living plan and
 [`banking.md`](banking.md) for the bank abstraction design.
 
+## 2026-11-24 - Host-side backend contract v1 for external frontends
+
+### Progress
+
+- Implemented the backend half of the GUI plan without adding any GUI
+  dependency or changing the portable C API. `gr serve` is a versioned
+  JSON-RPC 2.0/NDJSON service over the existing pipeline and build drivers, so
+  a desktop editor can be a replaceable client while `gr`, CI and other tools
+  keep working normally.
+- Made the on-disk and in-memory outputs stable for clients: schema versions in
+  `project.toml` and `manifest.json`, absolute artifact paths in the manifest,
+  and structured Grain diagnostics and budget violations.
+
+### Changes
+
+- `pipeline/gramma_pipeline/schema.py`: new version constants for project,
+  manifest and service schemas. `load_project()` accepts missing schema
+  versions as v1 and rejects newer ones.
+- `pipeline/gramma_pipeline/generate.py`: writes `schema_version: 1` and an
+  `artifacts` object with absolute paths to the generated directory, manifest,
+  `meson.build` and generated sources. Starter templates and both examples now
+  write `[project] schema_version = 1`.
+- `pipeline/gramma_pipeline/budget.py`: added `check_budget_detailed()` with
+  `code`, `category`, `severity`, `target` and optional `asset` fields; the old
+  `check_budget()` string API is preserved and derived from it.
+- `pipeline/gramma_pipeline/grain/errors.py`: `GrainError.as_dict()` now includes
+  stable `code` and `severity` fields alongside source position and message.
+- `tools/gr/gramma_cli/service.py` and `main.py`: new `gr serve` command with
+  methods for service info, project create/open/validate/save, asset
+  list/generate, Grain check/transpile, structured checks, build/run, targets,
+  doctor and API docs. CLI/build chatter is redirected to stderr so stdout
+  remains clean JSON-RPC. Dedicated asset mutation and streaming progress
+  events are deliberately deferred.
+- `schemas/`: JSON Schema descriptions for the project table, generated
+  manifest and service contract. `docs/gui-frontend.md`, `docs/roadmap.md`,
+  `docs/asset-pipeline.md` and `README.md` record the implemented boundary and
+  the still-unimplemented editor.
+
+### Verification
+
+- New `tests/test_backend_contract.py` covers service version/capabilities,
+  project open/save schema handling, structured manifest and budget results,
+  Grain diagnostics, unknown methods, schema files and a real `gr serve`
+  NDJSON subprocess round trip using the test-kart and grain-demo examples.
+- Python tests: 125/125 pass, including the new eight contract tests and all
+  existing pipeline, Grain, template, API-doc, Docker, LSP and emulator-adjacent
+  checks.
+- Full local CI-equivalent rerun after the contract changes:
+  `ALL CI-EQUIVALENT CHECKS PASSED`, including Meson C tests, PC/GB/NES emulator
+  smokes, Grain demo builds for all four targets, SMS/GG structural checks and
+  the four-bank NES ROM. `gr docs --check` still reports the generated reference
+  up to date. Hosted CI was not rerun here; the earlier green remains
+  user-reported.
+- The generated API reference is unaffected because no public C header changed;
+  GUI code was not added and no hardware/SMS validation claim is made here.
+
+### Next steps
+
+1. Choose the desktop UI stack and build a minimal shell that only calls
+   `gr serve`; Tauri + TypeScript remains a candidate, not a decision.
+2. If the editor needs direct asset import/removal or streaming progress, add
+   those methods under a `contract_version` bump and conformance test them.
+3. Keep [`gui-frontend.md`](gui-frontend.md) and
+   [`roadmap.md`](roadmap.md#not-done-from-the-plan) honest: the backend
+   contract is done, the GUI itself is still future work.
+
+## 2026-11-24 - Recorded remaining backlog and separate GUI frontend direction
+
+### Progress
+
+- Audited the post-MVP software backlog. The additional backends, missing
+  hand-written demos, NES palette/nametable and DMC gaps, MOD/XM/IT import,
+  compressed PSGlib, multi-layer/animated Tiled maps, cross-file Grain
+  refactoring, Grain v1 language limits, Docker image build/adoption, CI matrix
+  scope, performance guides/community beta and API-doc extraction follow-ups
+  were already recorded in [`roadmap.md`](roadmap.md#not-done-from-the-plan),
+  [`grain.md`](grain.md#limitations-v1),
+  [`asset-pipeline.md`](asset-pipeline.md) and the entries below.
+- Added the one missing future requirement: a Unity/Godot-style GUI editor must
+  stay a separate client of the tooling, not become a dependency of the
+  portable C core or pipeline.
+
+### Changes
+
+- [`docs/gui-frontend.md`](gui-frontend.md): new planned design for the
+  separation boundary, versioned `gr serve` JSON contract, structured
+  manifest/diagnostics, v1 editor scope, stack options and milestones. It is
+  explicitly marked as not implemented.
+- [`roadmap.md`](roadmap.md#not-done-from-the-plan): added the GUI frontend to
+  the backlog and a separate next step that starts with the contract before any
+  UI stack is chosen.
+- [`README.md`](../README.md): links the planned GUI and notes that projects
+  remain plain-file/CLI-first.
+
+### Verification
+
+- Documentation-only change; no engine, pipeline, CLI or CI files changed. The
+  new cross-links point at existing documentation and the GUI design is marked
+  planned rather than shipped.
+
+### Next steps
+
+1. Choose the GUI stack and local transport after the contract is defined;
+   Tauri + TypeScript is the current candidate, not a decision.
+2. Add `gr serve` and versioned project/manifest/diagnostic schemas with
+   conformance tests that do not import GUI code.
+3. Build the first editor shell against that contract only, keeping the CLI,
+   VS Code extension and other consumers unaffected.
+
 ## 2026-11-24 - Phase 3 developer experience: templates, docs, Docker, Grain LSP and target headers
 
 ### Progress
@@ -78,24 +187,26 @@ Short, chronological record of engine milestones. See
   check and starter-template smoke. Checksums were computed from the downloaded
   pinned artifacts and are verified by the Dockerfile at image build time, but
   no Docker image was built here.
-- Hosted CI was run and failed the first pipeline-test step: two API-doc tests
+- Hosted CI initially failed the first pipeline-test step: two API-doc tests
   reported `docs/generated/api-reference.md is missing` because the generated
   directory was ignored by `.gitignore` and therefore absent from the fresh
-  checkout. The ignore rules were fixed and the full local CI-equivalent rerun
-  is clean with 117/117 Python tests. Hosted green is **not** claimed until a
-  rerun on the committed reference is observed or reported. Physical GB/NES/
-  SMS/GG validation remains deferred; skipped is not passed. SMS/GG emulator
-  operation remains informal/user-observed only, not a formal CI or hardware
-  result.
+  checkout. The ignore rules were fixed, the generated reference was committed,
+  and hosted CI was rerun successfully afterward; green is recorded here as
+  **user-reported**, not locally observed. The full local CI-equivalent rerun
+  is also clean with 117/117 Python tests. Physical GB/NES/SMS/GG validation
+  remains deferred; skipped is not passed. SMS/GG emulator operation remains
+  informal/user-observed only, not a formal CI or hardware result.
 
 ### Next steps
 
-1. Commit `docs/generated/api-reference.md` together with the `.gitignore`
-   change, re-run hosted CI, and record green only when it is observed or
-   reported by the user.
+1. Keep `docs/generated/api-reference.md` committed with the `.gitignore`
+   exceptions and regenerate it with `gr docs` whenever public declarations or
+   header comments change; `gr docs --check` is now a CI gate.
 2. Optional follow-ups: build the pinned Docker images and consider adopting
    them in hosted CI, add cross-file Grain refactoring, and extend API-doc
-   extraction if public headers gain new declaration shapes.
+   extraction if public headers gain new declaration shapes. The broader
+   software backlog is recorded in
+   [`roadmap.md`](roadmap.md#not-done-from-the-plan).
 3. Keep the hardware checklist and formal SMS/GG rendered-frame validation
    pending as recorded in [`roadmap.md`](roadmap.md#not-done-from-the-plan).
 

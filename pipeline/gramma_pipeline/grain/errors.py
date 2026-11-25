@@ -33,7 +33,10 @@ class GrainError(ValueError):
                 f"error: {self.message}")
 
     def as_dict(self) -> dict:
+        """Stable JSON form used by `gr serve`, the CLI and editor clients."""
         return {
+            "code": "grain.error",
+            "severity": "error",
             "filename": self.filename,
             "line": self.pos.line,
             "col": self.pos.col,

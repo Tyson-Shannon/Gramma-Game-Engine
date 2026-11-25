@@ -1,5 +1,6 @@
 [project]
 name = "grain-demo"
+schema_version = 1
 default_target = "pc"
 max_sprites = 1
 width = 256

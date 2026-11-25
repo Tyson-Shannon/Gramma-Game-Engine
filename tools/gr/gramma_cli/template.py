@@ -34,6 +34,7 @@ game = executable('game',
 
 C_PROJECT_TOML = '''[project]
 name = "{name}"
+schema_version = 1
 default_target = "pc"
 max_sprites = 1
 width = 256
@@ -78,6 +79,7 @@ chr_banks = 1
 
 GRAIN_PROJECT_TOML = '''[project]
 name = "{name}"
+schema_version = 1
 default_target = "pc"
 max_sprites = 1
 width = 256

@@ -165,11 +165,33 @@ def sms_mapper_config(project: Project) -> dict:
     }
 
 
-def check_budget(project: Project, target: str, manifest: dict) -> list[str]:
-    errors: list[str] = []
+def _violation(code: str, category: str, message: str, target: str,
+               asset: str | None = None) -> dict:
+    """Return the stable JSON form shared by CLI, GUI and LSP-style clients."""
+    result = {
+        "code": code,
+        "category": category,
+        "severity": "error",
+        "target": target,
+        "message": message,
+    }
+    if asset is not None:
+        result["asset"] = asset
+    return result
+
+
+def check_budget_detailed(project: Project, target: str,
+                          manifest: dict) -> list[dict]:
+    """Like :func:`check_budget`, but with codes, categories and asset names."""
+    violations: list[dict] = []
     profile = PROFILES.get(target)
     if profile is None:
-        return [f"unknown target '{target}'"]
+        return [_violation("budget.unknown_target", "target",
+                           f"unknown target '{target}'", target)]
+
+    def add(code: str, category: str, message: str,
+            asset: str | None = None) -> None:
+        violations.append(_violation(code, category, message, target, asset))
 
     limits = dict(profile)
     for key, value in project.budgets.get(target, {}).items():
@@ -177,12 +199,14 @@ def check_budget(project: Project, target: str, manifest: dict) -> list[str]:
             limits[key] = int(value)
 
     if target == "gb":
-        errors.extend(gb_mapper_config(project)["errors"])
+        for message in gb_mapper_config(project)["errors"]:
+            add("budget.mapper", "mapper", message)
     if target == "sms":
         sms = sms_mapper_config(project)
-        errors.extend(sms["errors"])
+        for message in sms["errors"]:
+            add("budget.mapper", "mapper", message)
         if sms["rom_banks"] * 16 > limits["rom_kb"]:
-            errors.append(
+            add("budget.mapper", "mapper",
                 f"mapper: sms {sms['rom_banks']} ROM banks need "
                 f"{sms['rom_banks'] * 16} KB, budgets.sms.rom_kb is "
                 f"{limits['rom_kb']}")
@@ -192,74 +216,83 @@ def check_budget(project: Project, target: str, manifest: dict) -> list[str]:
         if asset["kind"] in ("audio", "music"):
             continue
         if asset["bpp"] not in profile["bpp"]:
-            errors.append(
+            add("budget.asset_bpp", "asset",
                 f"{name}: {asset['bpp']}bpp is not supported on {target} "
-                f"(supported: {', '.join(str(b) for b in sorted(profile['bpp']))})")
+                f"(supported: {', '.join(str(b) for b in sorted(profile['bpp']))})",
+                name)
         if asset["palette_colors"] > limits["palette_colors"]:
-            errors.append(
+            add("budget.asset_palette", "asset",
                 f"{name}: palette uses {asset['palette_colors']} colors, "
-                f"{target} allows {limits['palette_colors']}")
+                f"{target} allows {limits['palette_colors']}", name)
         if (asset["kind"] in ("background", "map") and
                 limits["nametable_tiles"] is not None and
                 asset["tile_count"] > limits["nametable_tiles"]):
-            errors.append(
+            add("budget.asset_nametable", "asset",
                 f"{name}: {asset['kind']} uses {asset['tile_count']} tiles, "
-                f"{target} nametable limit is {limits['nametable_tiles']}")
+                f"{target} nametable limit is {limits['nametable_tiles']}", name)
 
     unique_tiles = sum(asset["unique_tiles"] for asset in manifest["assets"])
     if unique_tiles > limits["vram_tiles"]:
-        errors.append(
+        add("budget.vram", "vram",
             f"VRAM: {unique_tiles} unique tiles exceeds {target} budget "
             f"of {limits['vram_tiles']}")
 
     if manifest["declared_sprites"] > limits["sprites"]:
-        errors.append(
+        add("budget.sprites", "sprite",
             f"sprites: {manifest['declared_sprites']} live sprites exceeds "
             f"{target} budget of {limits['sprites']}")
     if (manifest["declared_sprites"] > limits["sprites_per_line"] and
             limits["sprites_per_line"] < limits["sprites"]):
-        errors.append(
+        add("budget.sprites_per_line", "sprite",
             f"sprites: {manifest['declared_sprites']} sprites may exceed the "
             f"{target} per-scanline limit of {limits['sprites_per_line']}")
 
     rom_bytes = manifest["totals"]["rom_bytes"]
     rom_limit = limits["rom_kb"] * 1024
     if rom_bytes > rom_limit:
-        errors.append(
+        add("budget.rom", "rom",
             f"ROM: {rom_bytes} bytes of asset data exceeds {target} budget "
             f"of {rom_limit} bytes (code not yet counted)")
 
     if target == "nes":
         mapper_errors, chr_banks = _nes_mapper_errors(project)
-        errors.extend(mapper_errors)
+        for message in mapper_errors:
+            add("budget.mapper", "mapper", message)
         if chr_banks > 0:
             used: dict[int, int] = {}
             for asset in manifest["assets"]:
                 if asset["kind"] == "audio":
                     continue
+                name = asset["name"]
                 bank = asset.get("chr_bank", 0)
                 if bank < 0 or bank >= chr_banks:
-                    errors.append(
-                        f"{asset['name']}: chr_bank {bank} is outside the "
-                        f"configured {chr_banks} CHR banks")
+                    add("budget.chr_bank", "mapper",
+                        f"{name}: chr_bank {bank} is outside the "
+                        f"configured {chr_banks} CHR banks", name)
                     continue
                 tile = asset.get("chr_tile")
                 if tile is not None and tile < 0:
-                    errors.append(
-                        f"{asset['name']}: chr_tile {tile} must not be negative")
+                    add("budget.chr_tile", "mapper",
+                        f"{name}: chr_tile {tile} must not be negative", name)
                 elif (tile is not None and
                       tile + asset["unique_tiles"] > CHR_TILES_PER_TABLE):
-                    errors.append(
-                        f"{asset['name']}: chr_tile {tile} with "
+                    add("budget.chr_tile", "mapper",
+                        f"{name}: chr_tile {tile} with "
                         f"{asset['unique_tiles']} tiles exceeds the "
-                        f"{CHR_TILES_PER_TABLE}-tile pattern table")
+                        f"{CHR_TILES_PER_TABLE}-tile pattern table", name)
                 used[bank] = used.get(bank, 0) + asset["unique_tiles"]
             for bank, tiles in used.items():
                 if tiles > CHR_TILES_PER_TABLE:
-                    errors.append(
+                    add("budget.chr_bank", "mapper",
                         f"CHR bank {bank}: {tiles} unique tiles exceed the "
                         f"{CHR_TILES_PER_TABLE}-tile pattern table")
-    return errors
+    return violations
+
+
+def check_budget(project: Project, target: str, manifest: dict) -> list[str]:
+    """Return human-readable error strings for the CLI and existing callers."""
+    return [item["message"] for item in check_budget_detailed(
+        project, target, manifest)]
 
 
 def format_report(errors: list[str], target: str) -> str:

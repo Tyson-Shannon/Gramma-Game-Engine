@@ -9,6 +9,7 @@ The pipeline runs at build time on the host. It emits C arrays into
 ```toml
 [project]
 name = "test-kart"
+schema_version = 1
 default_target = "pc"
 max_sprites = 2
 width = 256
@@ -77,6 +78,13 @@ rom_banks = 4                # 16 KB banks, including fixed banks 0/1
 [grain]
 sources = ["src/game.grain"] # or omit to auto-discover src/*.grain
 ```
+
+`schema_version` is optional for pre-version projects and defaults to 1; a
+newer value fails with an explicit error instead of being guessed at. The
+generated `manifest.json` carries its own `schema_version` plus an `artifacts`
+object with absolute paths to the generated directory, manifest, `meson.build`
+and every generated source. JSON Schema descriptions of the `[project]` table,
+the manifest and the service contract live in [`schemas/`](../schemas/).
 
 `generate()` also transpiles each `[grain].sources` file into
 `generated/<target>/grain_<stem>.c` and adds it to `generated_sources`. Grain

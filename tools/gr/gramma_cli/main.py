@@ -613,6 +613,11 @@ def cmd_docs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from .service import serve
+    return serve()
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     print("Gramma doctor")
     print(f"  repo:      {REPO}")
@@ -721,6 +726,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = commands.add_parser("doctor", help="check local toolchains")
     doctor.set_defaults(func=cmd_doctor)
+
+    serve_cmd = commands.add_parser(
+        "serve", help="run the versioned JSON-RPC backend service on stdio")
+    serve_cmd.set_defaults(func=cmd_serve)
     return parser
 
 

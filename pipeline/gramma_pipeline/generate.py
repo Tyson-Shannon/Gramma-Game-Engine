@@ -12,6 +12,7 @@ from .grain import transpile as transpile_grain
 from .images import emit_image, process_image
 from .music import process_music
 from .project import load_project
+from .schema import MANIFEST_SCHEMA_VERSION
 from .targets import PROFILES
 from .tiled import process_map
 
@@ -136,6 +137,7 @@ def generate(root: Path, target: str, project=None,
             stale.unlink()
 
     manifest = {
+        "schema_version": MANIFEST_SCHEMA_VERSION,
         "project": project.name,
         "target": target,
         "declared_sprites": project.max_sprites,
@@ -328,6 +330,14 @@ def generate(root: Path, target: str, project=None,
         f"generated_sources = files({source_list})\n",
         encoding="utf-8",
     )
+    # GUI/API clients consume absolute paths so they never need to know how the
+    # Python module was installed or where the project root happens to live.
+    manifest["artifacts"] = {
+        "directory": str(output.resolve()),
+        "manifest": str((output / "manifest.json").resolve()),
+        "meson": str((output / "meson.build").resolve()),
+        "sources": [str((output / name).resolve()) for name in sources],
+    }
     (output / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest

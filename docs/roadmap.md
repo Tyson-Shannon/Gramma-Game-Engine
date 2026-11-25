@@ -102,6 +102,12 @@ Against `Gramma_Engine___Technical_Plan.md`:
   export capability constants and `gr_*_system_query()`. They live outside
   `gramma.h`, fail with `GR_ERR_UNSUPPORTED` on the wrong target, and are covered
   by C89 compile checks, C unit tests and the generated API reference.
+- Host-side backend contract v1: `gr serve` implements versioned JSON-RPC 2.0
+  over NDJSON for project, asset, Grain, check, build/run, target, doctor and
+  docs operations. `project.toml` and `manifest.json` carry schema versions,
+  budget violations and Grain diagnostics are structured, and [`schemas/`](../schemas/)
+  plus contract tests in `tests/test_backend_contract.py` document the stable
+  boundary for a future GUI. See [`gui-frontend.md`](gui-frontend.md).
 - Example "test-kart": scrolling background, animated two-player sprites,
   music and SFX from one source tree.
 - Tests: C fixed-point, bank-abstraction, GB/SMS mapper, overlay and target
@@ -131,6 +137,12 @@ Against `Gramma_Engine___Technical_Plan.md`:
 - MOD/XM/IT importers (v1 accepts Gramma text scores), compressed PSGlib
   streams, multi-layer Tiled compositing and tile animations, cross-file Grain
   refactoring, performance guides and community beta.
+- **Separate GUI frontend (planned):** a Unity/Godot-style desktop editor for
+  project creation, assets, Grain/C sources, inspectors and build/run flows is
+  still not implemented. The versioned host-side JSON contract now exists as
+  `gr serve`; the editor must consume it rather than couple `core/`, `targets/`,
+  `pipeline/` or `tools/gr/` to a GUI framework. See
+  [`gui-frontend.md`](gui-frontend.md).
 - CI matrix covers PC, GB and NES builds plus emulator smokes, and SMS/GG builds
   plus structural ROM checks, not six toolchains. It checks Grain sources, builds
   `examples/grain-demo/` for all four targets, verifies the generated API
@@ -156,5 +168,10 @@ cart; emulator passes are not recorded as hardware results.
 3. **Physical hardware (later):** when hardware and carts are available, run the
    manual checklist, record date/tester/hardware/ROM hash/result in its results
    table, and summarise the outcome in [`progress.md`](progress.md).
+4. **GUI frontend (separate track):** contract v1 is done, so choose the UI
+   stack and build the editor as a client of `gr serve`, never as a dependency
+   of the portable C core or pipeline. Add asset-mutation and progress methods
+   behind a contract bump if the editor needs them; see
+   [`gui-frontend.md`](gui-frontend.md).
 
 See [`progress.md`](progress.md) for the chronological change log.

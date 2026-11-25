@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gramma.local/schemas/project-v1.json",
+  "title": "Gramma project.toml [project] table v1",
+  "description": "Describes the [project] table. Other tables use [[image]], [[audio]], [[music]], [[map]], [budgets.*], [target.*], [mapper.*] and [grain] as documented in docs/asset-pipeline.md.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "default_target": { "type": "string", "minLength": 1 },
+    "max_sprites": { "type": "integer", "minimum": 0 },
+    "width": { "type": "integer", "minimum": 8 },
+    "height": { "type": "integer", "minimum": 8 }
+  },
+  "additionalProperties": true
+}

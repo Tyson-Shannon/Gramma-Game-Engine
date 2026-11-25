@@ -220,6 +220,19 @@ README pinning GBDK 4.6.0, cc65 2.19, SDCC 4.5.0 and a fixed devkitSMS commit by
 checksum. Those images are not built here and hosted CI still installs tools on
 the runner; static tests verify the pins and documented environment.
 
+The versioned host-side contract is implemented: `gr serve` speaks JSON-RPC
+2.0 over newline-delimited JSON on stdio, with schema versions in
+`project.toml`/`manifest.json` and stable diagnostic objects. GUI clients talk
+to that contract so the CLI, pipeline and portable C backend remain usable on
+their own; see [`docs/gui-frontend.md`](docs/gui-frontend.md) and
+[`schemas/`](schemas/). A Unity/Godot-style GUI editor itself is still planned,
+not implemented.
+
+```sh
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"service.version","params":{}}' \
+  | ./tools/gr/gr serve
+```
+
 ## Controls (PC simulator)
 
 | Action | Player 1 | Player 2 | Gamepad |
@@ -239,14 +252,15 @@ targets/pc/           SDL2 simulator backend (software tile renderer + synth)
 targets/gb/           Game Boy / GBC backend (GBDK-2020)
 targets/nes/          NES backend (cc65, NROM/MMC1/MMC3, custom NMI)
 targets/sms/          SMS/Game Gear backend (SDCC + devkitSMS, VDP + PSG)
-tools/gr/             `gr` CLI: new, docs, lsp, assets, grain, check, build, run, doctor
+tools/gr/             `gr` CLI: new, docs, lsp, serve, assets, grain, check, build, run, doctor
 pipeline/             PNG/TMX/WAV/tick -> C arrays, budget profiles, Grain compiler, API docs
 examples/test-kart/   shared C example game and its source assets
 examples/grain-demo/  game written entirely in Grain
 editors/vscode-grain/ VS Code syntax highlighting plus the Grain LSP client
 docker/               pinned multi-stage toolchain images and build helper
 tests/                C unit tests, Python pipeline/Grain/LSP/template tests, emulator smokes
-docs/                 API guide + generated reference, architecture, targets, pipeline, banking, grain, hardware validation, roadmap, progress
+docs/                 API guide + generated reference, architecture, targets, pipeline, banking, grain, hardware validation, roadmap, progress, GUI contract
+schemas/              JSON Schema descriptions for project, manifest and service contract
 ```
 
 ## Design rules

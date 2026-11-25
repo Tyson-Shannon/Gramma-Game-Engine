@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gramma.local/schemas/service-contract-v1.json",
+  "title": "Gramma host-side service contract v1",
+  "contract_version": 1,
+  "transport": "jsonrpc-2.0/ndjson",
+  "methods": [
+    "service.version",
+    "service.capabilities",
+    "project.create",
+    "project.open",
+    "project.validate",
+    "project.save",
+    "assets.list",
+    "assets.generate",
+    "grain.check",
+    "grain.transpile",
+    "check",
+    "build",
+    "run",
+    "targets",
+    "doctor",
+    "docs.generate",
+    "docs.check"
+  ],
+  "diagnostic": {
+    "type": "object",
+    "required": ["code", "severity", "filename", "line", "col", "message"],
+    "properties": {
+      "code": { "const": "grain.error" },
+      "severity": { "const": "error" },
+      "filename": { "type": "string" },
+      "line": { "type": "integer", "minimum": 1 },
+      "col": { "type": "integer", "minimum": 1 },
+      "message": { "type": "string" }
+    }
+  },
+  "violation": {
+    "type": "object",
+    "required": ["code", "category", "severity", "target", "message"],
+    "properties": {
+      "code": { "type": "string", "pattern": "^budget\\." },
+      "category": {
+        "enum": ["target", "mapper", "asset", "vram", "sprite", "rom"]
+      },
+      "severity": { "const": "error" },
+      "target": { "type": "string" },
+      "asset": { "type": "string" },
+      "message": { "type": "string" }
+    }
+  }
+}

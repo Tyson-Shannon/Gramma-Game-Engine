@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gramma.local/schemas/manifest-v1.json",
+  "title": "Gramma generated manifest v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project",
+    "target",
+    "declared_sprites",
+    "assets",
+    "totals",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project": { "type": "string" },
+    "target": { "type": "string" },
+    "declared_sprites": { "type": "integer", "minimum": 0 },
+    "chr_banks": { "type": "integer", "minimum": 1 },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "rom_bytes", "source"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": {
+            "enum": ["sprite", "background", "map", "audio", "music"]
+          },
+          "rom_bytes": { "type": "integer", "minimum": 0 },
+          "source": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": ["rom_bytes", "unique_tiles"],
+      "properties": {
+        "rom_bytes": { "type": "integer", "minimum": 0 },
+        "unique_tiles": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["directory", "manifest", "meson", "sources"],
+      "properties": {
+        "directory": { "type": "string" },
+        "manifest": { "type": "string" },
+        "meson": { "type": "string" },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "grain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "file", "entities", "scenes"],
+        "properties": {
+          "source": { "type": "string" },
+          "file": { "type": "string" },
+          "entities": { "type": "array", "items": { "type": "string" } },
+          "scenes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}
